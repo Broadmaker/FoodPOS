@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
-  TextInput, ScrollView,
+  TextInput, ScrollView, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,16 +24,19 @@ const MenuItemCard = React.memo(({ item, onPress, quantity, isDark }) => {
         overflow: 'hidden',
         marginBottom: 10,
         borderColor: isInCart ? '#F97316' : isDark ? '#3F3F46' : '#F3F4F6',
-        backgroundColor: isInCart ? '#FFF7ED' : isDark ? '#27272A' : '#FFFFFF',
+        backgroundColor: isInCart ? '#FFF7ED' : isDark ? '#2D2D30' : '#FFFFFF',
       }}
     >
       <View style={{
         alignItems: 'center',
         justifyContent: 'center',
         paddingVertical: 14,
-        backgroundColor: isInCart ? '#FFEDD5' : isDark ? '#3F3F46' : '#F9FAFB',
+        backgroundColor: isInCart ? '#FFEDD5' : isDark ? '#3F3F46' : '#F3F4F6',
       }}>
-        <Ionicons name="fast-food-outline" size={28} color={isInCart ? '#F97316' : isDark ? '#52525B' : '#D1D5DB'} />
+        {item.image_uri
+          ? <Image source={{ uri: item.image_uri }} style={{ width: 56, height: 56, borderRadius: 10 }} />
+          : <Text style={{ fontSize: 32 }}>{item.image_emoji || '🍽️'}</Text>
+        }
         {item.is_featured === 1 && (
           <View style={{ position: 'absolute', top: 6, left: 6, width: 18, height: 18, borderRadius: 9, backgroundColor: '#F59E0B', alignItems: 'center', justifyContent: 'center' }}>
             <Ionicons name="star" size={9} color="white" />
@@ -46,7 +49,7 @@ const MenuItemCard = React.memo(({ item, onPress, quantity, isDark }) => {
         )}
       </View>
       <View style={{ padding: 8 }}>
-        <Text numberOfLines={2} style={{ fontSize: 11, fontWeight: '600', color: isDark ? '#FFFFFF' : '#111827', lineHeight: 15, marginBottom: 4 }}>
+        <Text numberOfLines={2} style={{ fontSize: 12, fontWeight: '700', color: isInCart ? '#C2410C' : isDark ? '#F4F4F5' : '#111827', lineHeight: 16, marginBottom: 4 }}>
           {item.name}
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>

@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Platform, Alert } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,6 +14,10 @@ import SettingsScreen from '../screens/settings/SettingsScreen';
 import { useCart } from '../context/CartContext';
 import { useApp } from '../context/AppContext';
 import { useStaff, ROLE_PERMISSIONS } from '../context/StaffContext';
+import { PRINTER_STATUS } from '../context/PrinterContext';
+import { printerState } from '../utils/printerState';
+import { Modal } from 'react-native';
+import PrinterScreen from '../screens/printer/PrinterScreen';
 
 const Tab = createBottomTabNavigator();
 const POSStack = createStackNavigator();
@@ -41,8 +46,22 @@ function CustomTabBar({ state, navigation }) {
   const { itemCount } = useCart();
   const { isDark } = useApp();
   const { permissions, currentStaff, logout } = useStaff();
+  const [showPrinter, setShowPrinter] = useState(false);
+  const [printerConnected, setPrinterConnected] = useState(printerState.getState().isConnected);
+  const [printerDevice, setPrinterDevice] = useState(printerState.getState().device);
 
-  const pb = Platform.OS === 'ios' ? 24 : 12;
+  useEffect(() => {
+    // Subscribe directly to printerState — no context needed
+    const unsub = printerState.subscribe((isConnected, device) => {
+      console.log('TabBar: printerState changed:', isConnected);
+      setPrinterConnected(isConnected);
+      setPrinterDevice(device);
+    });
+    return unsub;
+  }, []);
+
+  const insets = useSafeAreaInsets();
+  const pb = insets.bottom > 0 ? insets.bottom : 12;
   const visibleTabs = ALL_TABS.filter((t) => permissions?.[t.permission]);
 
   return (
@@ -60,16 +79,29 @@ function CustomTabBar({ state, navigation }) {
             </Text>
           </View>
         </View>
-        <TouchableOpacity
-          onPress={() => Alert.alert('Log Out', `Log out ${currentStaff?.name}?`, [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Log Out', style: 'destructive', onPress: logout },
-          ])}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: isDark ? '#27272A' : '#F3F4F6' }}
-        >
-          <Ionicons name="log-out-outline" size={13} color={isDark ? '#71717A' : '#9CA3AF'} />
-          <Text style={{ fontSize: 11, fontWeight: '600', color: isDark ? '#71717A' : '#9CA3AF' }}>Log out</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {permissions?.canAccessPrinter && (
+            <TouchableOpacity
+              onPress={() => setShowPrinter(true)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: printerConnected ? (isDark ? '#14532D' : '#F0FDF4') : (isDark ? '#27272A' : '#F3F4F6'), borderWidth: 1, borderColor: printerConnected ? '#16A34A' : 'transparent' }}
+            >
+              <Ionicons name="print-outline" size={13} color={printerConnected ? '#16A34A' : isDark ? '#71717A' : '#9CA3AF'} />
+              <Text style={{ fontSize: 10, fontWeight: '600', color: printerConnected ? '#16A34A' : isDark ? '#71717A' : '#9CA3AF' }}>
+                {printerConnected ? printerDevice?.device_name?.split(' ')[0] || 'Ready' : 'No Printer'}
+              </Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            onPress={() => Alert.alert('Log Out', `Log out ${currentStaff?.name}?`, [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Log Out', style: 'destructive', onPress: logout },
+            ])}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: isDark ? '#27272A' : '#F3F4F6' }}
+          >
+            <Ionicons name="log-out-outline" size={13} color={isDark ? '#71717A' : '#9CA3AF'} />
+            <Text style={{ fontSize: 11, fontWeight: '600', color: isDark ? '#71717A' : '#9CA3AF' }}>Log out</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Tab buttons */}
@@ -106,6 +138,9 @@ function CustomTabBar({ state, navigation }) {
           );
         })}
       </View>
+      <Modal visible={showPrinter} animationType="slide" presentationStyle="fullScreen">
+        <PrinterScreen onClose={() => setShowPrinter(false)} />
+      </Modal>
     </View>
   );
 }

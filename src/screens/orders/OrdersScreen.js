@@ -215,7 +215,7 @@ const DateRangeModal = ({ visible, fromDate, toDate, onApply, onClose, isDark })
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
-      <SafeAreaView style={{ flex: 1, backgroundColor: bg }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top']}>
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: borderC }}>
           <TouchableOpacity onPress={onClose}>
@@ -329,7 +329,9 @@ const FilterChip = ({ label, active, onPress, isDark }) => (
 // ─── ORDER ROW ────────────────────────────────────────────────────────────────
 const OrderRow = ({ order, onPress, formatCurrency, isDark }) => {
   const s = STATUS_STYLES[order.status] || STATUS_STYLES.pending;
-  const date = new Date(order.created_at);
+  // Parse timestamp — JS Date handles ISO strings in local timezone
+  const raw = order.created_at;
+  const date = raw ? new Date(raw.includes('T') ? raw : raw.replace(' ', 'T') + '+08:00') : new Date();
   const borderC = isDark ? '#27272A' : '#F3F4F6';
   return (
     <TouchableOpacity
@@ -369,7 +371,7 @@ const OrderDetailModal = ({ order, onClose, onVoid, formatCurrency, isDark }) =>
 
   return (
     <Modal visible={!!order} animationType="slide" presentationStyle="pageSheet">
-      <SafeAreaView style={{ flex: 1, backgroundColor: bg }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top']}>
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: borderC }}>
           <TouchableOpacity onPress={onClose} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: isDark ? '#27272A' : '#F3F4F6', alignItems: 'center', justifyContent: 'center' }}>
@@ -386,7 +388,7 @@ const OrderDetailModal = ({ order, onClose, onVoid, formatCurrency, isDark }) =>
               <View>
                 <Text style={{ fontSize: 20, fontWeight: '800', color: textPri }}>{order.order_number}</Text>
                 <Text style={{ fontSize: 12, color: textMut, marginTop: 4 }}>
-                  {new Date(order.created_at).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}
+                  {(() => { const d = order.created_at; return new Date(d && !d.includes('T') ? d.replace(' ', 'T') + '+08:00' : d).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }); })()}
                 </Text>
                 <Text style={{ fontSize: 12, color: textMut, marginTop: 2 }}>Cashier: {order.cashier || 'Staff'}</Text>
               </View>

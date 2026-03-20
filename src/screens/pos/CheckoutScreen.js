@@ -1,10 +1,9 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Modal } from 'react-native';
+import React, { useState, useRef, useMemo } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Modal, ActivityIndicator, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useCart } from '../../context/CartContext';
-import { usePrinter } from '../../context/PrinterContext';
-import { buildReceiptLines } from '../../utils/receiptFormatter';
+import { buildReceiptText } from '../../utils/receiptFormatter';
 import { useApp } from '../../context/AppContext';
 import { createOrder } from '../../database';
 import { Button, Card, Divider } from '../../components/common';
@@ -16,7 +15,55 @@ const PAYMENT_METHODS = [
 
 // ─── RECEIPT MODAL ────────────────────────────────────────────────────────────
 const ReceiptModal = ({ visible, order, cartItems, onClose, formatCurrency, isDark, shopName, shopAddress, shopPhone, receiptFooter }) => {
+  const [isPrinting, setIsPrinting] = useState(false);
+
   if (!order) return null;
+
+  const handlePrint = async () => {
+    if (isPrinting) return; // prevent double tap
+    console.log('=== HANDLE PRINT CLICKED ===');
+    if (!order) return;
+    setIsPrinting(true);
+    try {
+      const { BLEPrinter } = require('react-native-thermal-receipt-printer-image-qr');
+      const { getSetting } = require('../../database');
+      const address = getSetting('printer_address');
+      console.log('Printer address:', address);
+      if (!address) {
+        Alert.alert('No Printer Set Up', 'Go to Settings → Bluetooth Printer → Connect first.');
+        return;
+      }
+      const text = buildReceiptText({
+        order, cartItems,
+        settings: { shop_name: shopName, shop_address: shopAddress, shop_phone: shopPhone, receipt_footer: receiptFooter },
+        formatCurrency
+      });
+      console.log('Text built, length:', text?.length);
+      await BLEPrinter.init();
+      await BLEPrinter.connectPrinter(address);
+      BLEPrinter.printBill(text, {});
+      console.log('=== PRINT SENT ===');
+      setTimeout(() => setIsPrinting(false), 3000); // keep disabled 3s after print
+    } catch (e) {
+      console.warn('Print error:', e.message);
+      // Try printing without reconnect in case already connected
+      try {
+        const { BLEPrinter } = require('react-native-thermal-receipt-printer-image-qr');
+        const text = buildReceiptText({
+          order, cartItems,
+          settings: { shop_name: shopName, shop_address: shopAddress, shop_phone: shopPhone, receipt_footer: receiptFooter },
+          formatCurrency
+        });
+        BLEPrinter.printBill(text, {});
+        console.log('=== PRINT SENT (retry) ===');
+      } catch (e2) {
+        Alert.alert('Print Failed', 'Could not print. Make sure printer is on and go to Settings → Bluetooth Printer to reconnect.');
+      }
+    } finally {
+      // Always re-enable after 3 seconds max
+      setTimeout(() => setIsPrinting(false), 3000);
+    }
+  };
 
   const bg       = isDark ? '#18181B' : '#FFFFFF';
   const receiptBg = isDark ? '#27272A' : '#F9FAFB';
@@ -28,15 +75,7 @@ const ReceiptModal = ({ visible, order, cartItems, onClose, formatCurrency, isDa
   const dateStr = now.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
   const timeStr = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
 
-  const handlePrint = async () => {
-    const lines = buildReceiptLines({
-      order: completedOrder,
-      cartItems: cartItems,
-      settings,
-      formatCurrency,
-    });
-    await printReceipt(lines);
-  };
+
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
@@ -148,7 +187,7 @@ export default function CheckoutScreen({ navigation }) {
   const { items, subtotal, discountAmount, taxAmount, total,
     paymentMethod, setPaymentMethod, setDiscount, clearCart } = useCart();
   const { formatCurrency, settings, isDark } = useApp();
-  const { printReceipt, status: printerStatus, isPrinting } = usePrinter();
+
 
   const [cashTendered, setCashTendered] = useState('0');
   const [discountInput, setDiscountInput] = useState('');
@@ -172,8 +211,10 @@ export default function CheckoutScreen({ navigation }) {
     setIsProcessing(true);
     try {
       let payload = {
-        subtotal, discount: discountAmount, tax: taxAmount, total,
-        paymentMethod, notes, cashier: settings.cashier_name || 'Staff',
+        subtotal, discount: discountAmount, tax: taxAmount,
+        taxAmount, discountAmount,
+        total, paymentMethod, notes,
+        cashier: settings.cashier_name || 'Staff',
         cashAmount: 0, gcashAmount: 0,
       };
       if (paymentMethod === 'cash') {
@@ -242,6 +283,18 @@ export default function CheckoutScreen({ navigation }) {
             <Text style={{ fontSize: 17, fontWeight: '800', color: textPri }}>Total</Text>
             <Text style={{ fontSize: 17, fontWeight: '800', color: '#F97316' }}>{formatCurrency(total)}</Text>
           </View>
+          {taxAmount > 0 && (
+            <View style={{ marginTop: 6, padding: 8, backgroundColor: isDark ? '#27272A' : '#F9FAFB', borderRadius: 8, gap: 3 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 11, color: textMut }}>VAT Inclusive ({settings.tax_rate}%)</Text>
+                <Text style={{ fontSize: 11, color: textMut }}>{formatCurrency(taxAmount)}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 11, color: textMut }}>Net of VAT</Text>
+                <Text style={{ fontSize: 11, color: textMut }}>{formatCurrency(total - taxAmount)}</Text>
+              </View>
+            </View>
+          )}
         </Card>
 
         {/* Discount */}
@@ -327,36 +380,55 @@ export default function CheckoutScreen({ navigation }) {
         {paymentMethod === 'gcash' && (
           <Card>
             <Text style={{ fontSize: 13, fontWeight: '700', color: textPri, marginBottom: 10 }}>GCash Payment</Text>
+
+            {/* Amount */}
             <View style={{ alignItems: 'center', marginBottom: 16 }}>
-              <Text style={{ fontSize: 28, fontWeight: '800', color: '#F97316' }}>{formatCurrency(total)}</Text>
-              <Text style={{ fontSize: 13, color: textMut, marginTop: 2 }}>to be paid via GCash</Text>
+              <Text style={{ fontSize: 32, fontWeight: '800', color: '#F97316' }}>{formatCurrency(total)}</Text>
+              <Text style={{ fontSize: 13, color: textMut, marginTop: 2 }}>Send via GCash</Text>
             </View>
-            {/* QR Placeholder */}
+
+            {/* QR Code */}
             <View style={{ alignItems: 'center', marginBottom: 16 }}>
-              <View style={{ width: 180, height: 180, borderRadius: 16, borderWidth: 2, borderColor: isDark ? '#3F3F46' : '#E5E7EB', borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#27272A' : '#F9FAFB' }}>
-                <View style={{ width: 120, height: 120, position: 'relative' }}>
-                  {[{ top: 0, left: 0 }, { top: 0, right: 0 }, { bottom: 0, left: 0 }].map((pos, i) => (
-                    <View key={i} style={{ position: 'absolute', width: 32, height: 32, borderWidth: 4, borderColor: isDark ? '#52525B' : '#9CA3AF', borderRadius: 4, ...pos }} />
-                  ))}
-                  {[{ top: 8, left: 8 }, { top: 8, right: 8 }, { bottom: 8, left: 8 }].map((pos, i) => (
-                    <View key={i} style={{ position: 'absolute', width: 16, height: 16, backgroundColor: isDark ? '#52525B' : '#9CA3AF', borderRadius: 2, ...pos }} />
-                  ))}
-                  <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
-                    <View style={{ backgroundColor: isDark ? '#27272A' : '#F9FAFB', padding: 6, borderRadius: 8 }}>
-                      <Ionicons name="phone-portrait-outline" size={24} color="#3B82F6" />
-                    </View>
-                  </View>
+              {settings.gcash_qr_uri ? (
+                <View style={{ alignItems: 'center', gap: 8 }}>
+                  <Image source={{ uri: settings.gcash_qr_uri }} style={{ width: 200, height: 200, borderRadius: 16, borderWidth: 1, borderColor: isDark ? '#3F3F46' : '#E5E7EB' }} resizeMode="contain" />
+                  {settings.gcash_name ? (
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: textPri }}>{settings.gcash_name}</Text>
+                  ) : null}
+                  {settings.gcash_number ? (
+                    <Text style={{ fontSize: 16, fontWeight: '800', color: '#007DFF', letterSpacing: 1 }}>{settings.gcash_number}</Text>
+                  ) : null}
                 </View>
-              </View>
-              <Text style={{ fontSize: 11, color: isDark ? '#52525B' : '#D1D5DB', marginTop: 10, textAlign: 'center' }}>
-                {'QR code will appear here\nonce GCash is configured in Settings'}
-              </Text>
+              ) : settings.gcash_number ? (
+                // No QR but has number — show number prominently
+                <View style={{ alignItems: 'center', padding: 24, borderRadius: 16, backgroundColor: isDark ? '#1E3A5F' : '#EFF6FF', width: '100%', gap: 6 }}>
+                  <Ionicons name="phone-portrait-outline" size={36} color="#007DFF" />
+                  {settings.gcash_name ? (
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: textPri }}>{settings.gcash_name}</Text>
+                  ) : null}
+                  <Text style={{ fontSize: 22, fontWeight: '800', color: '#007DFF', letterSpacing: 1 }}>{settings.gcash_number}</Text>
+                  <Text style={{ fontSize: 12, color: isDark ? '#93C5FD' : '#2563EB', marginTop: 4 }}>Send {formatCurrency(total)} to this number</Text>
+                </View>
+              ) : (
+                // Nothing configured
+                <View style={{ alignItems: 'center', padding: 20, borderRadius: 16, borderWidth: 1.5, borderColor: isDark ? '#3F3F46' : '#E5E7EB', borderStyle: 'dashed', width: '100%', gap: 8 }}>
+                  <Ionicons name="qr-code-outline" size={36} color={isDark ? '#52525B' : '#9CA3AF'} />
+                  <Text style={{ fontSize: 13, color: isDark ? '#52525B' : '#9CA3AF', textAlign: 'center' }}>
+                    {'Configure GCash in\nSettings → GCash Payment'}
+                  </Text>
+                </View>
+              )}
             </View>
+
             {/* Steps */}
             <View style={{ gap: 10, padding: 14, backgroundColor: isDark ? '#1E3A5F' : '#EFF6FF', borderRadius: 14 }}>
-              {['Ask customer to open GCash app', 'Scan QR or send to your number', 'Confirm receipt before tapping Complete'].map((s, i) => (
+              {[
+                settings.gcash_qr_uri ? 'Ask customer to scan the QR code' : 'Ask customer to send to the GCash number',
+                'Enter the exact amount: ' + formatCurrency(total),
+                'Confirm payment received before tapping Complete'
+              ].map((s, i) => (
                 <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <View style={{ width: 20, height: 20, borderRadius: 999, backgroundColor: '#3B82F6', alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ width: 20, height: 20, borderRadius: 999, backgroundColor: '#007DFF', alignItems: 'center', justifyContent: 'center' }}>
                     <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }}>{i + 1}</Text>
                   </View>
                   <Text style={{ fontSize: 12, flex: 1, color: isDark ? '#93C5FD' : '#2563EB' }}>{s}</Text>
@@ -408,6 +480,7 @@ export default function CheckoutScreen({ navigation }) {
         shopAddress={settings.shop_address}
         shopPhone={settings.shop_phone}
         receiptFooter={settings.receipt_footer}
+
       />
     </SafeAreaView>
   );

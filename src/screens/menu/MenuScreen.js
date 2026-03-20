@@ -83,7 +83,7 @@ const ItemFormModal = ({ visible, item, categories, onSave, onClose, isDark }) =
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
-      <SafeAreaView style={{ flex: 1, backgroundColor: bg }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top']}>
         {/* Header */}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: borderC }}>
           <TouchableOpacity onPress={onClose}>
@@ -244,7 +244,7 @@ const BulkImportModal = ({ visible, onClose, onImport, isDark }) => {
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
-      <SafeAreaView style={{ flex: 1, backgroundColor: bg }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top']}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: borderC }}>
           <TouchableOpacity onPress={() => { setPreview([]); setFileName(''); onClose(); }}>
             <Text style={{ fontSize: 15, fontWeight: '600', color: '#EF4444' }}>Cancel</Text>

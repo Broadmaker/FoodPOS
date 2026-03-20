@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TextInput, TouchableOpacity, Switch, Alert, Modal } from 'react-native';
+import { View, Text, ScrollView, TextInput, TouchableOpacity, Switch, Alert, Modal, Image } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../../context/AppContext';
@@ -164,16 +165,7 @@ export default function SettingsScreen() {
           <ComingSoonRow iconName="resize-outline" label="Paper Size" description="58mm or 80mm roll width" isDark={isDark} />
         </View>
 
-        {/* ── STAFF & ACCESS ── */}
-        <View style={{ backgroundColor: cardBg, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: cardBorder }}>
-          <SectionTitle title="Staff & Access" isDark={isDark} />
-          <View style={{ height: 1, backgroundColor: dividerC, marginVertical: 10 }} />
-          <ComingSoonRow iconName="people-outline" label="Staff Accounts" description="Multiple cashier logins with roles" isDark={isDark} />
-          <View style={{ height: 1, backgroundColor: dividerC }} />
-          <ComingSoonRow iconName="lock-closed-outline" label="PIN Protection" description="Lock POS with a manager PIN" isDark={isDark} />
-          <View style={{ height: 1, backgroundColor: dividerC }} />
-          <ComingSoonRow iconName="shield-checkmark-outline" label="Permissions" description="Control access per staff role" isDark={isDark} />
-        </View>
+
 
         {/* ── INVENTORY ── */}
         <View style={{ backgroundColor: cardBg, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: cardBorder }}>
@@ -197,6 +189,46 @@ export default function SettingsScreen() {
           <ComingSoonRow iconName="download-outline" label="Export Data" description="Export sales to CSV or Excel" isDark={isDark} />
         </View>
 
+        {/* ── PAYMENT ── */}
+        <View style={{ backgroundColor: cardBg, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: cardBorder }}>
+          <SectionTitle title="GCash Payment" isDark={isDark} />
+          <View style={{ height: 1, backgroundColor: dividerC, marginVertical: 10 }} />
+          <Field label="GCash Number" value={form.gcash_number} onChangeText={set('gcash_number')} placeholder="09XX-XXX-XXXX" keyboardType="phone-pad" isDark={isDark} />
+          <Field label="Account Name" value={form.gcash_name} onChangeText={set('gcash_name')} placeholder="Full name on GCash" isDark={isDark} />
+          <View style={{ marginTop: 8 }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: isDark ? '#71717A' : '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>QR Code</Text>
+            {form.gcash_qr_uri ? (
+              <View style={{ alignItems: 'center', gap: 10 }}>
+                <Image source={{ uri: form.gcash_qr_uri }} style={{ width: 160, height: 160, borderRadius: 12, borderWidth: 1, borderColor: isDark ? '#3F3F46' : '#E5E7EB' }} resizeMode="contain" />
+                <TouchableOpacity
+                  onPress={() => setForm(f => ({ ...f, gcash_qr_uri: '' }))}
+                  style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 10, backgroundColor: isDark ? '#2D1B1B' : '#FEE2E2' }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#DC2626' }}>Remove QR</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                onPress={async () => {
+                  const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                  if (!perm.granted) { Alert.alert('Permission needed', 'Gallery permission is required.'); return; }
+                  const result = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.9 });
+                  if (!result.canceled && result.assets?.[0]) {
+                    setForm(f => ({ ...f, gcash_qr_uri: result.assets[0].uri }));
+                  }
+                }}
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 16, borderRadius: 14, borderWidth: 1.5, borderColor: isDark ? '#3F3F46' : '#E5E7EB', borderStyle: 'dashed', backgroundColor: isDark ? '#27272A' : '#F9FAFB' }}
+              >
+                <Ionicons name="qr-code-outline" size={22} color={isDark ? '#52525B' : '#9CA3AF'} />
+                <Text style={{ fontSize: 14, fontWeight: '600', color: isDark ? '#71717A' : '#9CA3AF' }}>Upload QR Screenshot</Text>
+              </TouchableOpacity>
+            )}
+            <Text style={{ fontSize: 11, color: isDark ? '#52525B' : '#D1D5DB', marginTop: 8, textAlign: 'center' }}>
+              Screenshot your GCash QR from the GCash app and upload it here
+            </Text>
+          </View>
+        </View>
+
         {/* ── INTEGRATIONS ── */}
         <View style={{ backgroundColor: cardBg, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: cardBorder }}>
           <SectionTitle title="Integrations" isDark={isDark} />
@@ -208,7 +240,7 @@ export default function SettingsScreen() {
           <ComingSoonRow iconName="card-outline" label="Card Terminal" description="Connect a Tap-to-Pay card reader" isDark={isDark} />
         </View>
 
-        {/* ── STAFF ── */}
+        {/* ── STAFF & ACCESS ── */}
         {permissions?.canAccessSettings && (
           <View style={{ backgroundColor: cardBg, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: cardBorder }}>
             <SectionTitle title="Staff & Access" isDark={isDark} />
@@ -223,10 +255,20 @@ export default function SettingsScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 14, fontWeight: '600', color: isDark ? '#FFFFFF' : '#111827' }}>Manage Staff</Text>
-                <Text style={{ fontSize: 12, color: isDark ? '#71717A' : '#9CA3AF', marginTop: 1 }}>Add, edit or remove staff accounts</Text>
+                <Text style={{ fontSize: 12, color: isDark ? '#71717A' : '#9CA3AF', marginTop: 1 }}>Add, edit or remove staff accounts & PINs</Text>
               </View>
               <Ionicons name="chevron-forward" size={16} color={isDark ? '#3F3F46' : '#E5E7EB'} />
             </TouchableOpacity>
+            <View style={{ height: 1, backgroundColor: dividerC }} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 }}>
+              <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: isDark ? '#27272A' : '#F0FDF4', alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="shield-checkmark-outline" size={19} color="#16A34A" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: isDark ? '#FFFFFF' : '#111827' }}>Role Permissions</Text>
+                <Text style={{ fontSize: 12, color: isDark ? '#71717A' : '#9CA3AF', marginTop: 1 }}>Admin: full access · Cashier: POS & Orders only</Text>
+              </View>
+            </View>
           </View>
         )}
 
@@ -257,9 +299,14 @@ export default function SettingsScreen() {
       </ScrollView>
     </SafeAreaView>
 
-      {/* Staff Modal — outside ScrollView so context providers are accessible */}
+      {/* Staff Modal */}
       <Modal visible={showStaff} animationType="slide" presentationStyle="fullScreen">
         <StaffScreen onClose={() => setShowStaff(false)} />
+      </Modal>
+
+      {/* Printer Modal */}
+      <Modal visible={showPrinter} animationType="slide" presentationStyle="fullScreen">
+        <PrinterScreen onClose={() => setShowPrinter(false)} />
       </Modal>
     </View>
   );

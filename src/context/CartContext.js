@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useReducer, useCallback } from 'react';
+import { useApp } from './AppContext';
 
 const CartContext = createContext(null);
 
@@ -96,9 +97,15 @@ export const CartProvider = ({ children }) => {
   const discountAmount = state.discountType === 'percent'
     ? (subtotal * state.discount) / 100
     : state.discount;
-  const taxRate = 0; // set from settings
-  const taxAmount = ((subtotal - discountAmount) * taxRate) / 100;
-  const total = Math.max(0, subtotal - discountAmount + taxAmount);
+  const { settings } = useApp();
+  const taxRate = parseFloat(settings?.tax_rate) || 0;
+  // VAT-inclusive: price already includes VAT, extract it from the total
+  // Formula: VAT = total × (rate / (100 + rate))
+  const taxableAmount = Math.max(0, subtotal - discountAmount);
+  const taxAmount = taxRate > 0
+    ? taxableAmount * (taxRate / (100 + taxRate))
+    : 0;
+  const total = Math.max(0, taxableAmount); // total stays same, VAT is already included
 
   const isInCart = useCallback((id) => state.items.some((i) => i.id === id), [state.items]);
   const getItemQuantity = useCallback((id) => {

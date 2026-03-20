@@ -1,0 +1,25 @@
+diff --git a/node_modules/react-native-thermal-receipt-printer-image-qr/android/src/main/java/com/pinmi/react/printer/adapter/BLEPrinterAdapter.java b/node_modules/react-native-thermal-receipt-printer-image-qr/android/src/main/java/com/pinmi/react/printer/adapter/BLEPrinterAdapter.java
+index 9d77969..5942912 100644
+--- a/node_modules/react-native-thermal-receipt-printer-image-qr/android/src/main/java/com/pinmi/react/printer/adapter/BLEPrinterAdapter.java
++++ b/node_modules/react-native-thermal-receipt-printer-image-qr/android/src/main/java/com/pinmi/react/printer/adapter/BLEPrinterAdapter.java
+@@ -153,12 +153,20 @@ public class BLEPrinterAdapter implements PrinterAdapter{
+     private void connectBluetoothDevice(BluetoothDevice device, Boolean retry) throws IOException {
+         UUID uuid = UUID.fromString("00001101-0000-1000-8000-00805f9b34fb");
+ 
++        // Cancel discovery to speed up connection and prevent interference
++        BluetoothAdapter bluetoothAdapter = getBTAdapter();
++        if (bluetoothAdapter != null && bluetoothAdapter.isDiscovering()) {
++            bluetoothAdapter.cancelDiscovery();
++        }
++
+         if (retry) {
+             try {
+                 this.mBluetoothSocket = (BluetoothSocket) device.getClass()
+                         .getMethod("createRfcommSocket", new Class[] { int.class }).invoke(device, 1);
++                this.mBluetoothSocket.connect(); // FIX: was missing .connect() call
+             } catch (Exception e) {
+                 e.printStackTrace();
++                throw new IOException("Failed to connect via reflection: " + e.getMessage());
+             }
+         } else {
+             this.mBluetoothSocket = device.createInsecureRfcommSocketToServiceRecord(uuid);

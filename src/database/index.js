@@ -34,6 +34,7 @@ export const initDatabase = async () => {
       price REAL NOT NULL,
       category_id INTEGER,
       image_emoji TEXT DEFAULT '🍽️',
+      image_uri TEXT DEFAULT NULL,
       is_available INTEGER DEFAULT 1,
       is_featured INTEGER DEFAULT 0,
       stock INTEGER DEFAULT -1,
@@ -104,6 +105,10 @@ export const initDatabase = async () => {
   // Seed if empty
   await seedIfEmpty(database);
   seedStaffIfEmpty();
+  // Migration: add image_uri column if it doesn't exist
+  try {
+    database.execSync('ALTER TABLE menu_items ADD COLUMN image_uri TEXT DEFAULT NULL');
+  } catch (_) { /* column already exists */ }
 };
 
 // ─── SEED DATA ────────────────────────────────────────────────────────────────
@@ -298,17 +303,17 @@ export const searchMenuItems = (query) => {
 export const addMenuItem = (item) => {
   const database = getDatabase();
   return database.runSync(
-    `INSERT INTO menu_items (name, description, price, category_id, image_emoji, is_featured, stock)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [item.name, item.description || '', item.price, item.category_id, item.image_emoji || '🍽️', item.is_featured || 0, item.stock || -1]
+    `INSERT INTO menu_items (name, description, price, category_id, image_emoji, image_uri, is_available, is_featured, stock)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [item.name, item.description || '', item.price, item.category_id, item.image_emoji || null, item.image_uri || null, item.is_available ? 1 : 0, item.is_featured ? 1 : 0, item.stock || -1]
   );
 };
 
 export const updateMenuItem = (id, item) => {
   const database = getDatabase();
   return database.runSync(
-    `UPDATE menu_items SET name=?, description=?, price=?, category_id=?, image_emoji=?, is_available=?, is_featured=?, updated_at=datetime('now') WHERE id=?`,
-    [item.name, item.description, item.price, item.category_id, item.image_emoji, item.is_available ? 1 : 0, item.is_featured ? 1 : 0, id]
+    `UPDATE menu_items SET name=?, description=?, price=?, category_id=?, image_emoji=?, image_uri=?, is_available=?, is_featured=?, updated_at=datetime('now') WHERE id=?`,
+    [item.name, item.description, item.price, item.category_id, item.image_emoji || null, item.image_uri || null, item.is_available ? 1 : 0, item.is_featured ? 1 : 0, id]
   );
 };
 
@@ -330,8 +335,8 @@ export const createOrder = (orderData, items) => {
   const orderNumber = generateOrderNumber();
 
   const orderResult = database.runSync(
-    `INSERT INTO orders (order_number, status, subtotal, discount, tax, total, payment_method, amount_tendered, change_amount, cash_amount, gcash_amount, notes, cashier, completed_at)
-     VALUES (?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+    `INSERT INTO orders (order_number, status, subtotal, discount, tax, total, payment_method, amount_tendered, change_amount, cash_amount, gcash_amount, notes, cashier, completed_at, created_at)
+     VALUES (?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       orderNumber,
       orderData.subtotal,
@@ -345,6 +350,8 @@ export const createOrder = (orderData, items) => {
       orderData.gcashAmount || 0,
       orderData.notes || '',
       orderData.cashier || 'Staff',
+      new Date().toISOString(),
+      new Date().toISOString(),
     ]
   );
 

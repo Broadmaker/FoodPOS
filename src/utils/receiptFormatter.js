@@ -1,12 +1,12 @@
 import { Platform } from 'react-native';
 
-// 58mm paper = 32 characters per line at default font size
+// 58mm paper = 32 characters per line
 const COLS = 32;
 
-let BluetoothEscposPrinter = null;
+let COMMANDS = null;
 if (Platform.OS === 'android') {
   try {
-    BluetoothEscposPrinter = require('react-native-bluetooth-escpos-printer').BluetoothEscposPrinter;
+    COMMANDS = require('react-native-thermal-receipt-printer-image-qr').COMMANDS;
   } catch (e) {}
 }
 
@@ -16,9 +16,8 @@ const pad = (str, len) => {
   return s.length >= len ? s.slice(0, len) : s + ' '.repeat(len - s.length);
 };
 
-const divider = (char = '-') => char.repeat(COLS) + '\n';
+const divider = () => '-'.repeat(COLS) + '\n';
 
-// Left text + right-aligned value on same line
 const twoCol = (left, right) => {
   const r = String(right);
   const maxLeft = COLS - r.length - 1;
@@ -26,94 +25,95 @@ const twoCol = (left, right) => {
   return pad(l, maxLeft) + ' ' + r + '\n';
 };
 
-// ─── RECEIPT BUILDER ──────────────────────────────────────────────────────────
-// Returns an array of async functions — each prints one part of the receipt.
-// Caller (PrinterContext.printReceipt) executes them in sequence.
-export const buildReceiptLines = ({ order, cartItems, settings, formatCurrency }) => {
-  if (!BluetoothEscposPrinter) return [];
+const center = (str) => {
+  const s = String(str).slice(0, COLS);
+  const spaces = Math.max(0, Math.floor((COLS - s.length) / 2));
+  return ' '.repeat(spaces) + s + '\n';
+};
 
-  const P = BluetoothEscposPrinter;
-  const lines = [];
+// ─── RECEIPT BUILDER ──────────────────────────────────────────────────────────
+// Returns a single raw ESC/POS text string — sent in one printText() call
+export const buildReceiptText = ({ order, cartItems, settings, formatCurrency }) => {
+  if (!COMMANDS) return '';
+
+  const C = COMMANDS;
+  const TF = C.TEXT_FORMAT;
+  let text = '';
+
+  // ── INIT ──────────────────────────────────────────────────────────────────
+  text += C.HARDWARE.HW_INIT;
 
   // ── HEADER ────────────────────────────────────────────────────────────────
-  lines.push(() => P.printerAlign(P.ALIGN.CENTER));
-  lines.push(() => P.printText('\n', {}));
+  text += TF.TXT_ALIGN_CT;
+  text += TF.TXT_BOLD_ON;
+  text += (settings.shop_name || 'FoodPOS') + '\n';
+  text += TF.TXT_BOLD_OFF;
 
-  // Shop name — slightly larger
-  lines.push(() => P.printText(
-    (settings.shop_name || 'FoodPOS') + '\n',
-    { widthtimes: 1, heigthtimes: 1, fonttype: 1 }
-  ));
+  if (settings.shop_address) text += settings.shop_address + '\n';
+  if (settings.shop_phone)   text += settings.shop_phone + '\n';
 
-  if (settings.shop_address) {
-    lines.push(() => P.printText(settings.shop_address + '\n', {}));
-  }
-  if (settings.shop_phone) {
-    lines.push(() => P.printText(settings.shop_phone + '\n', {}));
-  }
-
-  // Date and time
   const now     = new Date();
   const dateStr = now.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
   const timeStr = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
-  lines.push(() => P.printText(`${dateStr}  ${timeStr}\n`, {}));
-  lines.push(() => P.printText(`${order.orderNumber}\n`, {}));
-  lines.push(() => P.printText('\n', {}));
+  text += `${dateStr}  ${timeStr}\n`;
+  text += order.orderNumber + '\n';
+  text += '\n';
 
   // ── ITEMS ─────────────────────────────────────────────────────────────────
-  lines.push(() => P.printerAlign(P.ALIGN.LEFT));
-  lines.push(() => P.printText(divider(), {}));
-  lines.push(() => P.printText(twoCol('ITEM', 'AMOUNT'), {}));
-  lines.push(() => P.printText(divider(), {}));
+  text += TF.TXT_ALIGN_LT;
+  text += divider();
+  text += twoCol('ITEM', 'AMOUNT');
+  text += divider();
 
   for (const item of cartItems) {
-    const itemTotal = formatCurrency(item.price * item.quantity);
-    lines.push(() => P.printText(item.name.slice(0, COLS) + '\n', {}));
-    lines.push(() => P.printText(
-      twoCol(`  ${item.quantity} x ${formatCurrency(item.price)}`, itemTotal), {}
-    ));
+    text += item.name.slice(0, COLS) + '\n';
+    text += twoCol(
+      `  ${item.quantity} x ${formatCurrency(item.price)}`,
+      formatCurrency(item.price * item.quantity)
+    );
   }
 
-  lines.push(() => P.printText(divider(), {}));
+  text += divider();
 
   // ── TOTALS ────────────────────────────────────────────────────────────────
-  lines.push(() => P.printText(twoCol('Subtotal', formatCurrency(order.subtotal)), {}));
+  text += twoCol('Subtotal', formatCurrency(order.subtotal));
 
   if (order.discountAmount > 0) {
-    lines.push(() => P.printText(
-      twoCol('Discount', '-' + formatCurrency(order.discountAmount)), {}
-    ));
+    text += twoCol('Discount', '-' + formatCurrency(order.discountAmount));
   }
 
-  lines.push(() => P.printText(divider(), {}));
+  text += divider();
+  text += TF.TXT_BOLD_ON;
+  text += twoCol('TOTAL', formatCurrency(order.total));
+  text += TF.TXT_BOLD_OFF;
 
-  // Total — bold
-  lines.push(() => P.printText(
-    twoCol('TOTAL', formatCurrency(order.total)),
-    { widthtimes: 1, heigthtimes: 1, fonttype: 1 }
-  ));
+  if (order.taxAmount > 0) {
+    text += twoCol('  VAT Inclusive', formatCurrency(order.taxAmount));
+    text += twoCol('  Net of VAT', formatCurrency(order.total - order.taxAmount));
+  }
 
-  lines.push(() => P.printText(divider(), {}));
+  text += divider();
 
   // ── PAYMENT ───────────────────────────────────────────────────────────────
   const payLabel = order.paymentMethod === 'cash' ? 'Cash Tendered' : 'GCash';
-  lines.push(() => P.printText(twoCol(payLabel, formatCurrency(order.amountTendered)), {}));
-
+  text += twoCol(payLabel, formatCurrency(order.amountTendered));
   if (order.changeAmount > 0) {
-    lines.push(() => P.printText(twoCol('Change', formatCurrency(order.changeAmount)), {}));
+    text += twoCol('Change', formatCurrency(order.changeAmount));
   }
-
-  lines.push(() => P.printText(divider(), {}));
+  text += divider();
 
   // ── FOOTER ────────────────────────────────────────────────────────────────
-  lines.push(() => P.printerAlign(P.ALIGN.CENTER));
-  lines.push(() => P.printText(
-    (settings.receipt_footer || 'Salamat! Come back soon!') + '\n', {}
-  ));
-  lines.push(() => P.printText('--- FoodPOS ---\n', {}));
+  // Center footer manually using padding (guaranteed regardless of ESC/POS encoding)
+  const footer = settings.receipt_footer || 'Salamat! Come back soon!';
+  const footerPad = Math.max(0, Math.floor((COLS - footer.length) / 2));
+  text += ' '.repeat(footerPad) + footer + '\n';
+  const brand = '--- FoodPOS ---';
+  const brandPad = Math.max(0, Math.floor((COLS - brand.length) / 2));
+  text += ' '.repeat(brandPad) + brand + '\n';
+  text += TF.TXT_ALIGN_LT;
 
-  // Feed paper so the receipt tears off cleanly
-  lines.push(() => P.printText('\n\n\n', {}));
+  // Feed paper
+  text += '\n\n\n';
 
-  return lines;
+  return text;
 };
