@@ -21,46 +21,53 @@ const divider = () => '-'.repeat(COLS) + '\n';
 const twoCol = (left, right) => {
   const r = String(right);
   const maxLeft = COLS - r.length - 1;
-  const l = String(left).slice(0, maxLeft);
-  return pad(l, maxLeft) + ' ' + r + '\n';
+  const l = String(left);
+  // Pad based on visible length only (strip ESC/POS control bytes)
+  const visLen = visibleLen(l);
+  const padNeeded = Math.max(0, maxLeft - visLen);
+  return l.slice(0, l.length) + ' '.repeat(padNeeded) + ' ' + r + '\n';
 };
 
+// Strip ESC/POS control bytes to get visible length only
+const visibleLen = (str) => str.replace(/[\x00-\x1F\x7F]/g, '').length;
+
+// Center using visible length so ESC/POS commands don't skew padding
 const center = (str) => {
-  const s = String(str).slice(0, COLS);
-  const spaces = Math.max(0, Math.floor((COLS - s.length) / 2));
-  return ' '.repeat(spaces) + s + '\n';
+  const visible = visibleLen(str);
+  const spaces = Math.max(0, Math.floor((COLS - visible) / 2));
+  return ' '.repeat(spaces) + str + '\n';
 };
 
 // ─── RECEIPT BUILDER ──────────────────────────────────────────────────────────
-// Returns a single raw ESC/POS text string — sent in one printText() call
 export const buildReceiptText = ({ order, cartItems, settings, formatCurrency }) => {
   if (!COMMANDS) return '';
 
-  const C = COMMANDS;
+  const C  = COMMANDS;
   const TF = C.TEXT_FORMAT;
   let text = '';
 
-  // ── INIT ──────────────────────────────────────────────────────────────────
+  // Init — left align so manual padding is respected
   text += C.HARDWARE.HW_INIT;
+  text += TF.TXT_ALIGN_LT;
 
   // ── HEADER ────────────────────────────────────────────────────────────────
-  text += TF.TXT_ALIGN_CT;
+  const shopName = settings.shop_name || 'FoodPOS';
+  // Bold wraps outside center() so control bytes don't affect padding calculation
   text += TF.TXT_BOLD_ON;
-  text += (settings.shop_name || 'FoodPOS') + '\n';
+  text += center(shopName);
   text += TF.TXT_BOLD_OFF;
 
-  if (settings.shop_address) text += settings.shop_address + '\n';
-  if (settings.shop_phone)   text += settings.shop_phone + '\n';
+  if (settings.shop_address) text += center(settings.shop_address);
+  if (settings.shop_phone)   text += center(settings.shop_phone);
 
   const now     = new Date();
   const dateStr = now.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
   const timeStr = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
-  text += `${dateStr}  ${timeStr}\n`;
-  text += order.orderNumber + '\n';
+  text += center(`${dateStr}  ${timeStr}`);
+  text += center(order.orderNumber);
   text += '\n';
 
   // ── ITEMS ─────────────────────────────────────────────────────────────────
-  text += TF.TXT_ALIGN_LT;
   text += divider();
   text += twoCol('ITEM', 'AMOUNT');
   text += divider();
@@ -103,17 +110,8 @@ export const buildReceiptText = ({ order, cartItems, settings, formatCurrency })
   text += divider();
 
   // ── FOOTER ────────────────────────────────────────────────────────────────
-  // Center footer manually using padding (guaranteed regardless of ESC/POS encoding)
-  const footer = settings.receipt_footer || 'Salamat! Come back soon!';
-  const footerPad = Math.max(0, Math.floor((COLS - footer.length) / 2));
-  text += ' '.repeat(footerPad) + footer + '\n';
-  const brand = '--- FoodPOS ---';
-  const brandPad = Math.max(0, Math.floor((COLS - brand.length) / 2));
-  text += ' '.repeat(brandPad) + brand + '\n';
-  text += TF.TXT_ALIGN_LT;
-
-  // Feed paper
-  text += '\n\n\n';
+  text += center(settings.receipt_footer || 'Salamat! Come back soon!');
+  text += center('--- FoodPOS ---');
 
   return text;
 };

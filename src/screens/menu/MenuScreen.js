@@ -7,7 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as XLSX from 'xlsx';
 import { getMenuItems, getCategories, addMenuItem, updateMenuItem, deleteMenuItem } from '../../database';
 import { useApp } from '../../context/AppContext';
 import { Button, Card, Divider, EmptyState } from '../../components/common';
@@ -25,13 +26,45 @@ const FOOD_EMOJIS = [
 const parseCSV = (text) => {
   const lines = text.trim().split('\n');
   if (lines.length < 2) return [];
-  const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
-  return lines.slice(1).map(line => {
-    const vals = line.split(',').map(v => v.trim().replace(/"/g, ''));
-    const obj = {};
-    headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
-    return obj;
-  }).filter(r => r.name && r.price && !isNaN(parseFloat(r.price)));
+  // Normalize headers to lowercase and trim
+  const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, '').replace(/\r/g, ''));
+  return lines.slice(1)
+    .filter(line => line.trim())
+    .map(line => {
+      const vals = line.split(',').map(v => v.trim().replace(/"/g, '').replace(/\r/g, ''));
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
+      return obj;
+    })
+    .filter(r => r.name && r.name.length > 0 && r.price && !isNaN(parseFloat(r.price)));
+};
+
+// ─── EXCEL PARSER ────────────────────────────────────────────────────────────
+const parseExcel = async (uri) => {
+  try {
+    const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+    const workbook = XLSX.read(base64, { type: 'base64' });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+    const mapped = rows.map(row => {
+      const normalized = {};
+      Object.keys(row).forEach(k => {
+        const key = k.toLowerCase().trim().replace(/\s+/g, '_');
+        normalized[key] = String(row[k]).trim();
+      });
+      return normalized;
+    });
+    const filtered = mapped.filter(r => {
+      const hasName = r.name && r.name.length > 0;
+      const hasPrice = r.price && !isNaN(parseFloat(r.price));
+      return hasName && hasPrice;
+    });
+    return filtered;
+  } catch (e) {
+    console.warn('Excel parse error:', e.message);
+    return [];
+  }
 };
 
 // ─── ITEM FORM MODAL ──────────────────────────────────────────────────────────
@@ -223,18 +256,36 @@ const BulkImportModal = ({ visible, onClose, onImport, isDark }) => {
   const [preview, setPreview] = useState([]);
   const [fileName, setFileName] = useState('');
 
-  const handlePickCSV = async () => {
+  const handlePickFile = async () => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({ type: 'text/csv' });
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['text/csv', 'text/comma-separated-values',
+               'application/vnd.ms-excel',
+               'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+        copyToCacheDirectory: true,
+      });
       if (result.canceled) return;
       const asset = result.assets?.[0];
       if (!asset) return;
-      const text = await FileSystem.readAsStringAsync(asset.uri);
-      const parsed = parseCSV(text);
-      if (parsed.length === 0) return Alert.alert('Invalid CSV', 'No valid rows found. Make sure your CSV has "name" and "price" columns.');
+
+      const name = asset.name || '';
+      const isExcel = name.endsWith('.xlsx') || name.endsWith('.xls');
+
+      let parsed = [];
+      if (isExcel) {
+        parsed = await parseExcel(asset.uri);
+        if (parsed.length === 0) return Alert.alert('Invalid File', 'No valid rows found. Make sure your Excel file has "name" and "price" columns.');
+      } else {
+        const text = await FileSystem.readAsStringAsync(asset.uri);
+        parsed = parseCSV(text);
+        if (parsed.length === 0) return Alert.alert('Invalid File', 'No valid rows found. Make sure your CSV has "name" and "price" columns.');
+      }
       setPreview(parsed);
-      setFileName(asset.name);
-    } catch (e) { Alert.alert('Error', 'Could not read file.'); }
+      setFileName(name);
+    } catch (e) {
+      console.warn('File pick error:', e.message);
+      Alert.alert('Error', 'Could not read file. Make sure it is a valid CSV or Excel file.');
+    }
   };
 
   const bg = isDark ? '#18181B' : '#FFFFFF';
@@ -263,16 +314,17 @@ const BulkImportModal = ({ visible, onClose, onImport, isDark }) => {
               </Text>
             </View>
             <Text style={{ fontSize: 12, color: textMut, marginTop: 8 }}>Required: name, price. Optional: description, category</Text>
+            <Text style={{ fontSize: 12, color: textMut, marginTop: 4 }}>Supports: CSV (.csv) and Excel (.xlsx)</Text>
           </Card>
 
           {/* Pick button */}
           <TouchableOpacity
-            onPress={handlePickCSV}
+            onPress={handlePickFile}
             style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 16, borderRadius: 14, borderWidth: 2, borderColor: '#F97316', borderStyle: 'dashed', backgroundColor: isDark ? '#27272A' : '#FFF7ED' }}
           >
             <Ionicons name="document-text-outline" size={24} color="#F97316" />
             <Text style={{ fontSize: 15, fontWeight: '700', color: '#F97316' }}>
-              {fileName || 'Select CSV File'}
+              {fileName || 'Select CSV or Excel File'}
             </Text>
           </TouchableOpacity>
 
