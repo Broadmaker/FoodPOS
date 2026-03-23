@@ -12,12 +12,13 @@ export const AppProvider = ({ children }) => {
     shop_address: '',
     shop_phone: '',
     tax_rate: '0',
-    currency: 'P',
+    currency: '₱',
     receipt_footer: 'Thank you for dining with us!',
     cashier_name: 'Staff',
     gcash_number: '',
     gcash_name: '',
     gcash_qr_uri: '',
+    paper_size: '58',
   });
   const [isLoading, setIsLoading] = useState(true);
 

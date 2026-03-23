@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
-// 58mm paper = 32 characters per line
-const COLS = 32;
+// 58mm = 32 chars, 80mm = 48 chars per line
+const COLS_MAP = { '58': 32, '80': 48 };
 
 let COMMANDS = null;
 if (Platform.OS === 'android') {
@@ -16,23 +16,22 @@ const pad = (str, len) => {
   return s.length >= len ? s.slice(0, len) : s + ' '.repeat(len - s.length);
 };
 
-const divider = () => '-'.repeat(COLS) + '\n';
+const makeDivider = (COLS) => () => '-'.repeat(COLS) + '\n';
 
-const twoCol = (left, right) => {
+const makeTwoCol = (COLS) => (left, right) => {
   const r = String(right);
   const maxLeft = COLS - r.length - 1;
   const l = String(left);
-  // Pad based on visible length only (strip ESC/POS control bytes)
   const visLen = visibleLen(l);
   const padNeeded = Math.max(0, maxLeft - visLen);
-  return l.slice(0, l.length) + ' '.repeat(padNeeded) + ' ' + r + '\n';
+  return l + ' '.repeat(padNeeded) + ' ' + r + '\n';
 };
 
-// Strip ESC/POS control bytes to get visible length only
+// Strip ESC/POS control bytes to get visible length
 const visibleLen = (str) => str.replace(/[\x00-\x1F\x7F]/g, '').length;
 
-// Center using visible length so ESC/POS commands don't skew padding
-const center = (str) => {
+// Center using visible length
+const makeCenter = (COLS) => (str) => {
   const visible = visibleLen(str);
   const spaces = Math.max(0, Math.floor((COLS - visible) / 2));
   return ' '.repeat(spaces) + str + '\n';
@@ -42,8 +41,14 @@ const center = (str) => {
 export const buildReceiptText = ({ order, cartItems, settings, formatCurrency }) => {
   if (!COMMANDS) return '';
 
-  const C  = COMMANDS;
-  const TF = C.TEXT_FORMAT;
+  const C    = COMMANDS;
+  const TF   = C.TEXT_FORMAT;
+  const COLS = COLS_MAP[settings?.paper_size] || 32;
+
+  const divider = makeDivider(COLS);
+  const twoCol  = makeTwoCol(COLS);
+  const center  = makeCenter(COLS);
+
   let text = '';
 
   // Init — left align so manual padding is respected
@@ -52,7 +57,6 @@ export const buildReceiptText = ({ order, cartItems, settings, formatCurrency })
 
   // ── HEADER ────────────────────────────────────────────────────────────────
   const shopName = settings.shop_name || 'FoodPOS';
-  // Bold wraps outside center() so control bytes don't affect padding calculation
   text += TF.TXT_BOLD_ON;
   text += center(shopName);
   text += TF.TXT_BOLD_OFF;

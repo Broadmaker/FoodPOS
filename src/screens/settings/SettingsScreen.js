@@ -7,6 +7,7 @@ import { useApp } from '../../context/AppContext';
 import { useStaff } from '../../context/StaffContext';
 import StaffScreen from '../auth/StaffScreen';
 import PrinterScreen from '../printer/PrinterScreen';
+import ExportScreen from '../dashboard/ExportScreen';
 import { Button, Card, Divider, ScreenHeader } from '../../components/common';
 
 // ─── FIELD ───────────────────────────────────────────────────────────────────
@@ -68,6 +69,7 @@ export default function SettingsScreen() {
   const { currentStaff, permissions } = useStaff();
   const [showStaff, setShowStaff] = useState(false);
   const [showPrinter, setShowPrinter] = useState(false);
+  const [showExport, setShowExport] = useState(false);
   const [form, setForm] = useState({ ...settings });
   const [saved, setSaved] = useState(false);
 
@@ -162,7 +164,26 @@ export default function SettingsScreen() {
           <View style={{ height: 1, backgroundColor: dividerC }} />
           <ComingSoonRow iconName="wifi-outline" label="Network Printer" description="Connect via LAN or Wi-Fi" isDark={isDark} />
           <View style={{ height: 1, backgroundColor: dividerC }} />
-          <ComingSoonRow iconName="resize-outline" label="Paper Size" description="58mm or 80mm roll width" isDark={isDark} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 }}>
+            <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: isDark ? '#27272A' : '#FFF7ED', alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="resize-outline" size={19} color="#F97316" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: isDark ? '#FFFFFF' : '#111827' }}>Paper Size</Text>
+              <Text style={{ fontSize: 12, color: isDark ? '#71717A' : '#9CA3AF', marginTop: 1 }}>Select your thermal printer roll width</Text>
+            </View>
+            <View style={{ flexDirection: 'row', borderRadius: 10, overflow: 'hidden', borderWidth: 1.5, borderColor: isDark ? '#3F3F46' : '#E5E7EB' }}>
+              {['58', '80'].map((size) => (
+                <TouchableOpacity
+                  key={size}
+                  onPress={() => setForm(f => ({ ...f, paper_size: size }))}
+                  style={{ paddingHorizontal: 14, paddingVertical: 7, backgroundColor: form.paper_size === size ? '#F97316' : 'transparent' }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: form.paper_size === size ? '#FFFFFF' : isDark ? '#9CA3AF' : '#6B7280' }}>{size}mm</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
         </View>
 
 
@@ -182,11 +203,24 @@ export default function SettingsScreen() {
         <View style={{ backgroundColor: cardBg, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: cardBorder }}>
           <SectionTitle title="Data & Sync" isDark={isDark} />
           <View style={{ height: 1, backgroundColor: dividerC, marginVertical: 10 }} />
+          <TouchableOpacity
+            onPress={() => setShowExport(true)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 }}
+            activeOpacity={0.75}
+          >
+            <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: isDark ? '#27272A' : '#F0FDF4', alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="download-outline" size={19} color="#16A34A" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: isDark ? '#FFFFFF' : '#111827' }}>Export Sales Data</Text>
+              <Text style={{ fontSize: 12, color: isDark ? '#71717A' : '#9CA3AF', marginTop: 1 }}>Export to Excel — summary, items, orders</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={isDark ? '#3F3F46' : '#E5E7EB'} />
+          </TouchableOpacity>
+          <View style={{ height: 1, backgroundColor: dividerC }} />
           <ComingSoonRow iconName="cloud-upload-outline" label="Cloud Backup" description="Auto-sync orders to the cloud" isDark={isDark} />
           <View style={{ height: 1, backgroundColor: dividerC }} />
           <ComingSoonRow iconName="sync-outline" label="Multi-Device Sync" description="Use on multiple devices at once" isDark={isDark} />
-          <View style={{ height: 1, backgroundColor: dividerC }} />
-          <ComingSoonRow iconName="download-outline" label="Export Data" description="Export sales to CSV or Excel" isDark={isDark} />
         </View>
 
         {/* ── PAYMENT ── */}
@@ -307,6 +341,11 @@ export default function SettingsScreen() {
       {/* Printer Modal */}
       <Modal visible={showPrinter} animationType="slide" presentationStyle="fullScreen">
         <PrinterScreen onClose={() => setShowPrinter(false)} />
+      </Modal>
+
+      {/* Export Modal */}
+      <Modal visible={showExport} animationType="slide" presentationStyle="fullScreen">
+        <ExportScreen onClose={() => setShowExport(false)} />
       </Modal>
     </View>
   );

@@ -7,7 +7,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getOrdersFiltered, getOrderById, voidOrder } from '../../database';
 import { useApp } from '../../context/AppContext';
+import { useStaff } from '../../context/StaffContext';
+import { verifyPin } from '../../database';
+import { buildReceiptText } from '../../utils/receiptFormatter';
 import { Button, Card, Divider, EmptyState } from '../../components/common';
+import { PinPad } from '../../components/common/PinPad';
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const STATUS_STYLES = {
@@ -361,7 +365,7 @@ const OrderRow = ({ order, onPress, formatCurrency, isDark }) => {
 };
 
 // ─── ORDER DETAIL MODAL ───────────────────────────────────────────────────────
-const OrderDetailModal = ({ order, onClose, onVoid, formatCurrency, isDark }) => {
+const OrderDetailModal = ({ order, onClose, onVoid, onReprint, formatCurrency, isDark, isPrinting }) => {
   if (!order) return null;
   const s = STATUS_STYLES[order.status] || STATUS_STYLES.pending;
   const bg = isDark ? '#18181B' : '#FFFFFF';
@@ -434,11 +438,31 @@ const OrderDetailModal = ({ order, onClose, onVoid, formatCurrency, isDark }) =>
           </Card>
         </View>
 
-        {order.status === 'completed' && (
-          <View style={{ paddingHorizontal: 16, paddingBottom: 24, paddingTop: 12, borderTopWidth: 1, borderTopColor: borderC }}>
-            <Button title="Void Order" onPress={() => onVoid(order.id)} variant="danger" iconName="trash-outline" />
-          </View>
-        )}
+        <View style={{ paddingHorizontal: 16, paddingBottom: 24, paddingTop: 12, borderTopWidth: 1, borderTopColor: borderC, gap: 10 }}>
+          {/* Reprint always available */}
+          <TouchableOpacity
+            onPress={() => onReprint(order)}
+            disabled={isPrinting}
+            activeOpacity={0.8}
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 13, borderRadius: 14, backgroundColor: isDark ? '#27272A' : '#F3F4F6', borderWidth: 1.5, borderColor: isDark ? '#3F3F46' : '#E5E7EB', opacity: isPrinting ? 0.6 : 1 }}
+          >
+            <Ionicons name="print-outline" size={18} color={isDark ? '#D4D4D8' : '#374151'} />
+            <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? '#D4D4D8' : '#374151' }}>
+              {isPrinting ? 'Printing…' : 'Reprint Receipt'}
+            </Text>
+          </TouchableOpacity>
+          {/* Void only for completed orders */}
+          {order.status === 'completed' && (
+            <TouchableOpacity
+              onPress={() => onVoid(order.id)}
+              activeOpacity={0.8}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 13, borderRadius: 14, backgroundColor: '#FEE2E2', borderWidth: 1.5, borderColor: '#FECACA' }}
+            >
+              <Ionicons name="trash-outline" size={18} color="#DC2626" />
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#DC2626' }}>Void Order</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </SafeAreaView>
     </Modal>
   );
@@ -485,7 +509,12 @@ export default function OrdersScreen() {
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [showCalendar, setShowCalendar] = useState(false);
-  const { formatCurrency, isDark } = useApp();
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pendingVoidId, setPendingVoidId] = useState(null);
+  const [pinError, setPinError] = useState('');
+  const [isPrinting, setIsPrinting] = useState(false);
+  const { formatCurrency, isDark, settings } = useApp();
+  const { currentStaff } = useStaff();
 
   const bg = isDark ? '#000000' : '#F2F2F7';
   const surfBg = isDark ? '#18181B' : '#FFFFFF';
@@ -522,10 +551,92 @@ export default function OrdersScreen() {
   };
 
   const handleVoid = (id) => {
-    Alert.alert('Void Order', 'Are you sure? This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Void', style: 'destructive', onPress: () => { voidOrder(id); setSelected(null); loadOrders(); } },
-    ]);
+    // Admin requires PIN, cashier cannot void
+    if (!currentStaff) return;
+    setPendingVoidId(id);
+    setPinError('');
+    setShowPinModal(true);
+  };
+
+  const handlePinComplete = (pin) => {
+    const verified = verifyPin(currentStaff.id, pin);
+    if (verified) {
+      setPinError('');
+      setShowPinModal(false);
+      voidOrder(pendingVoidId);
+      setSelected(null);
+      setPendingVoidId(null);
+      loadOrders();
+    } else {
+      setPinError('Incorrect PIN. Try again.');
+    }
+  };
+
+  const handleReprint = async (order) => {
+    if (!order) return;
+    setIsPrinting(true);
+    try {
+      const { BLEPrinter } = require('react-native-thermal-receipt-printer-image-qr');
+      const { getSetting } = require('../../database');
+      const address = getSetting('printer_address');
+      if (!address) {
+        Alert.alert('No Printer', 'Go to Settings → Bluetooth Printer → Connect first.');
+        setIsPrinting(false);
+        return;
+      }
+      // Build receipt from order data
+      const cartItems = order.items?.map(i => ({
+        name: i.name,
+        price: i.subtotal / i.quantity,
+        quantity: i.quantity,
+      })) || [];
+      const text = buildReceiptText({
+        order: {
+          orderNumber: order.order_number,
+          subtotal: order.subtotal,
+          discountAmount: order.discount || 0,
+          taxAmount: order.tax || 0,
+          total: order.total,
+          paymentMethod: order.payment_method,
+          amountTendered: order.amount_tendered,
+          changeAmount: order.change_amount || 0,
+        },
+        cartItems,
+        settings,
+        formatCurrency,
+      });
+      await BLEPrinter.init();
+      await BLEPrinter.connectPrinter(address);
+      BLEPrinter.printBill(text, {});
+    } catch (e) {
+      try {
+        const { BLEPrinter } = require('react-native-thermal-receipt-printer-image-qr');
+        const cartItems = order.items?.map(i => ({
+          name: i.name,
+          price: i.subtotal / i.quantity,
+          quantity: i.quantity,
+        })) || [];
+        const text = buildReceiptText({
+          order: {
+            orderNumber: order.order_number,
+            subtotal: order.subtotal,
+            discountAmount: order.discount || 0,
+            taxAmount: order.tax || 0,
+            total: order.total,
+            paymentMethod: order.payment_method,
+            amountTendered: order.amount_tendered,
+            changeAmount: order.change_amount || 0,
+          },
+          cartItems,
+          settings,
+          formatCurrency,
+        });
+        BLEPrinter.printBill(text, {});
+      } catch (e2) {
+        Alert.alert('Print Failed', 'Could not print. Make sure printer is connected.');
+      }
+    }
+    setTimeout(() => setIsPrinting(false), 2000);
   };
 
   return (
@@ -632,9 +743,39 @@ export default function OrdersScreen() {
         order={selected}
         onClose={() => setSelected(null)}
         onVoid={handleVoid}
+        onReprint={handleReprint}
+        isPrinting={isPrinting}
         formatCurrency={formatCurrency}
         isDark={isDark}
       />
+
+      {/* PIN Modal for Void */}
+      <Modal visible={showPinModal} animationType="slide" presentationStyle="pageSheet" transparent={false}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#18181B' : '#FFFFFF' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: isDark ? '#27272A' : '#F3F4F6' }}>
+            <TouchableOpacity onPress={() => { setShowPinModal(false); setPendingVoidId(null); setPinError(''); }}>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: '#EF4444' }}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: isDark ? '#FFFFFF' : '#111827' }}>Confirm Void</Text>
+            <View style={{ width: 60 }} />
+          </View>
+          <View style={{ flex: 1, alignItems: 'center', paddingHorizontal: 32, paddingTop: 32 }}>
+            <View style={{ width: 56, height: 56, borderRadius: 20, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+              <Ionicons name="trash-outline" size={28} color="#DC2626" />
+            </View>
+            <Text style={{ fontSize: 20, fontWeight: '800', color: isDark ? '#FFFFFF' : '#111827', marginBottom: 6 }}>Enter Your PIN</Text>
+            <Text style={{ fontSize: 14, color: isDark ? '#71717A' : '#9CA3AF', textAlign: 'center', marginBottom: 32 }}>
+              Confirm your identity to void this order
+            </Text>
+            <PinPad
+              onComplete={handlePinComplete}
+              onCancel={() => { setShowPinModal(false); setPendingVoidId(null); setPinError(''); }}
+              isDark={isDark}
+              error={pinError}
+            />
+          </View>
+        </SafeAreaView>
+      </Modal>
 
       <DateRangeModal
         visible={showCalendar}

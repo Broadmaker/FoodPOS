@@ -9,7 +9,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#F97316"
     },
     "ios": {
       "supportsTablet": true,
@@ -22,10 +22,8 @@
     "android": {
       "package": "com.foodpos.app",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#F97316",
+        "foregroundImage": "./assets/adaptive-icon.png"
       },
       "permissions": [
         "android.permission.BLUETOOTH",
