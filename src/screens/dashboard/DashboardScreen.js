@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Dimensions } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Dimensions, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -7,6 +7,7 @@ import {
   getMonthlySummary, getTopItemsRange, getSalesSummaryRange,
 } from '../../database';
 import { useApp } from '../../context/AppContext';
+import ExportScreen from './ExportScreen';
 import { Card, StatCard, SectionHeader } from '../../components/common';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -262,6 +263,7 @@ const PaymentBreakdown = ({ data, totalSales, formatCurrency, isDark }) => {
 export default function DashboardScreen() {
   const { formatCurrency, settings, isDark, toggleTheme } = useApp();
   const [period, setPeriod] = useState('today');
+  const [showExport, setShowExport] = useState(false);
   const [summaryData, setSummaryData] = useState(null);
   const [chartData, setChartData] = useState([]);
   const [topItems, setTopItems] = useState([]);
@@ -304,6 +306,7 @@ export default function DashboardScreen() {
   const chartLabelKey = period === 'today' ? 'hour' : 'date';
 
   return (
+    <View style={{ flex: 1 }}>
     <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top']}>
       {/* Header */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, backgroundColor: surfBg, borderBottomWidth: 1, borderBottomColor: borderC }}>
@@ -311,12 +314,20 @@ export default function DashboardScreen() {
           <Text style={{ fontSize: 22, fontWeight: '800', color: textPri }}>Dashboard</Text>
           <Text style={{ fontSize: 12, color: textMut, marginTop: 2 }}>{settings.shop_name}</Text>
         </View>
-        <TouchableOpacity
-          onPress={toggleTheme}
-          style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: isDark ? '#27272A' : '#F3F4F6', alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={20} color={isDark ? '#F59E0B' : '#6B7280'} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => setShowExport(true)}
+            style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: isDark ? '#27272A' : '#F3F4F6', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Ionicons name="download-outline" size={20} color={isDark ? '#9CA3AF' : '#6B7280'} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={toggleTheme}
+            style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: isDark ? '#27272A' : '#F3F4F6', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={20} color={isDark ? '#F59E0B' : '#6B7280'} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Period Tabs */}
@@ -387,5 +398,10 @@ export default function DashboardScreen() {
         </Card>
       </ScrollView>
     </SafeAreaView>
+
+      <Modal visible={showExport} animationType="slide" presentationStyle="fullScreen">
+        <ExportScreen onClose={() => setShowExport(false)} />
+      </Modal>
+    </View>
   );
 }

@@ -275,7 +275,28 @@ export const updateCategory = (id, name, icon) => {
 export const deleteCategory = (id) => {
   const database = getDatabase();
   database.runSync('UPDATE menu_items SET category_id = NULL WHERE category_id = ?', [id]);
-  return database.runSync('DELETE FROM categories WHERE id = ?', [id]);
+  return database.runSync('UPDATE categories SET is_active = 0 WHERE id = ?', [id]);
+};
+
+export const getCategoryItemCount = (id) => {
+  const database = getDatabase();
+  const row = database.getFirstSync(
+    'SELECT COUNT(*) as count FROM menu_items WHERE category_id = ? AND is_available = 1',
+    [id]
+  );
+  return row?.count || 0;
+};
+
+export const reorderCategory = (id, direction, allCategories) => {
+  const database = getDatabase();
+  const idx = allCategories.findIndex(c => c.id === id);
+  if (idx < 0) return;
+  const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+  if (swapIdx < 0 || swapIdx >= allCategories.length) return;
+  const a = allCategories[idx];
+  const b = allCategories[swapIdx];
+  database.runSync('UPDATE categories SET sort_order = ? WHERE id = ?', [b.sort_order, a.id]);
+  database.runSync('UPDATE categories SET sort_order = ? WHERE id = ?', [a.sort_order, b.id]);
 };
 
 // ─── MENU ITEMS ───────────────────────────────────────────────────────────────

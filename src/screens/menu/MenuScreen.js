@@ -13,6 +13,7 @@ import { getMenuItems, getCategories, addMenuItem, updateMenuItem, deleteMenuIte
 import { useApp } from '../../context/AppContext';
 import { Button, Card, Divider, EmptyState } from '../../components/common';
 import { CategoryPills } from '../../components/common/CategoryPills';
+import CategoryScreen from './CategoryScreen';
 
 // ─── EMOJI LIBRARY ────────────────────────────────────────────────────────────
 const FOOD_EMOJIS = [
@@ -412,6 +413,7 @@ export default function MenuScreen() {
   const [editItem, setEditItem] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showCategories, setShowCategories] = useState(false);
   const { isDark } = useApp();
 
   const bg = isDark ? '#000000' : '#F2F2F7';
@@ -476,6 +478,13 @@ export default function MenuScreen() {
             <Text style={{ fontSize: 12, color: textMut, marginTop: 1 }}>{items.length} items</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              onPress={() => setShowCategories(true)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1.5, borderColor: isDark ? '#3F3F46' : '#E5E7EB', backgroundColor: isDark ? '#27272A' : '#FFFFFF' }}
+            >
+              <Ionicons name="grid-outline" size={16} color={isDark ? '#9CA3AF' : '#6B7280'} />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: isDark ? '#D4D4D8' : '#374151' }}>Categories</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setShowImport(true)}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1.5, borderColor: isDark ? '#3F3F46' : '#E5E7EB', backgroundColor: isDark ? '#27272A' : '#FFFFFF' }}
@@ -543,6 +552,10 @@ export default function MenuScreen() {
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      <Modal visible={showCategories} animationType="slide" presentationStyle="fullScreen">
+        <CategoryScreen onClose={() => { setShowCategories(false); loadData(); }} />
+      </Modal>
 
       <ItemFormModal
         visible={showForm}
