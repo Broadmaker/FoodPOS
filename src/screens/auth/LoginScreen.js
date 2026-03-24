@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, FlatList, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, FlatList, Animated, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getStaff, verifyPin } from '../../database';
@@ -77,8 +77,12 @@ export default function LoginScreen() {
 
         {/* Header */}
         <View style={{ alignItems: 'center', paddingTop: 36, paddingBottom: 28 }}>
-          <View style={{ width: 68, height: 68, borderRadius: 22, backgroundColor: '#FFF7ED', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
-            <Text style={{ fontSize: 38 }}>🍽️</Text>
+          <View style={{ width: 72, height: 72, borderRadius: 18, overflow: 'hidden', marginBottom: 14 }}>
+            <Image
+              source={require('../../../assets/icon.png')}
+              style={{ width: 96, height: 96, marginLeft: -12, marginTop: -12 }}
+              resizeMode="cover"
+            />
           </View>
           <Text style={{ fontSize: 24, fontWeight: '800', color: textPri }}>
             {settings.shop_name || 'FoodPOS'}
