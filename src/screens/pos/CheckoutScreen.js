@@ -5,11 +5,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCart } from '../../context/CartContext';
 import { buildReceiptText } from '../../utils/receiptFormatter';
 import { useApp } from '../../context/AppContext';
+import { useStaff } from '../../context/StaffContext';
 import { createOrder } from '../../database';
 import { Button, Card, Divider } from '../../components/common';
 
 const PAYMENT_METHODS = [
-  { id: 'cash',  label: 'Cash',  icon: 'cash-outline' },
+  { id: 'cash', label: 'Cash', icon: 'cash-outline' },
   { id: 'gcash', label: 'GCash', icon: 'phone-portrait-outline' },
 ];
 
@@ -65,13 +66,13 @@ const ReceiptModal = ({ visible, order, cartItems, onClose, formatCurrency, isDa
     }
   };
 
-  const bg       = isDark ? '#18181B' : '#FFFFFF';
+  const bg = isDark ? '#18181B' : '#FFFFFF';
   const receiptBg = isDark ? '#27272A' : '#F9FAFB';
-  const borderC  = isDark ? '#3F3F46' : '#E5E7EB';
-  const textPri  = isDark ? '#FFFFFF' : '#111827';
-  const textMut  = isDark ? '#71717A' : '#9CA3AF';
+  const borderC = isDark ? '#3F3F46' : '#E5E7EB';
+  const textPri = isDark ? '#FFFFFF' : '#111827';
+  const textMut = isDark ? '#71717A' : '#9CA3AF';
 
-  const now     = new Date();
+  const now = new Date();
   const dateStr = now.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
   const timeStr = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
 
@@ -97,7 +98,7 @@ const ReceiptModal = ({ visible, order, cartItems, onClose, formatCurrency, isDa
             <View style={{ alignItems: 'center', paddingTop: 24, paddingBottom: 16, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: borderC }}>
               <Text style={{ fontSize: 18, fontWeight: '800', color: textPri, letterSpacing: -0.5 }}>{shopName || 'My Food Shop'}</Text>
               {shopAddress ? <Text style={{ fontSize: 12, color: textMut, marginTop: 2 }}>{shopAddress}</Text> : null}
-              {shopPhone  ? <Text style={{ fontSize: 12, color: textMut }}>{shopPhone}</Text> : null}
+              {shopPhone ? <Text style={{ fontSize: 12, color: textMut }}>{shopPhone}</Text> : null}
               <View style={{ marginTop: 10, flexDirection: 'row', gap: 10 }}>
                 <Text style={{ fontSize: 11, color: textMut }}>{dateStr}</Text>
                 <Text style={{ fontSize: 11, color: textMut }}>·</Text>
@@ -187,6 +188,7 @@ export default function CheckoutScreen({ navigation }) {
   const { items, subtotal, discountAmount, taxAmount, total,
     paymentMethod, setPaymentMethod, setDiscount, clearCart } = useCart();
   const { formatCurrency, settings, isDark } = useApp();
+  const { currentStaff } = useStaff();
 
 
   const [cashTendered, setCashTendered] = useState('0');
@@ -214,7 +216,7 @@ export default function CheckoutScreen({ navigation }) {
         subtotal, discount: discountAmount, tax: taxAmount,
         taxAmount, discountAmount,
         total, paymentMethod, notes,
-        cashier: settings.cashier_name || 'Staff',
+        cashier: currentStaff?.name || settings.cashier_name || 'Staff',
         cashAmount: 0, gcashAmount: 0,
       };
       if (paymentMethod === 'cash') {
@@ -232,8 +234,8 @@ export default function CheckoutScreen({ navigation }) {
     }
   };
 
-  const bg      = isDark ? '#000000' : '#F2F2F7';
-  const surfBg  = isDark ? '#18181B' : '#FFFFFF';
+  const bg = isDark ? '#000000' : '#F2F2F7';
+  const surfBg = isDark ? '#18181B' : '#FFFFFF';
   const borderC = isDark ? '#27272A' : '#F3F4F6';
   const textPri = isDark ? '#FFFFFF' : '#111827';
   const textMut = isDark ? '#71717A' : '#9CA3AF';

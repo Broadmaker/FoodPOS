@@ -113,6 +113,12 @@ export const buildReceiptText = ({ order, cartItems, settings, formatCurrency })
   }
   text += divider();
 
+  // ── NOTES ─────────────────────────────────────────────────────────────────
+  if (order.notes) {
+    text += divider();
+    text += 'Notes: ' + order.notes + '\n';
+  }
+
   // ── FOOTER ────────────────────────────────────────────────────────────────
   text += center(settings.receipt_footer || 'Salamat! Come back soon!');
   text += center('--- FoodPOS ---');

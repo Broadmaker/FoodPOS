@@ -129,8 +129,6 @@ export default function SettingsScreen() {
         <View style={{ backgroundColor: cardBg, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: cardBorder }}>
           <SectionTitle title="POS Configuration" isDark={isDark} />
           <View style={{ height: 1, backgroundColor: dividerC, marginVertical: 10 }} />
-          <Field label="Cashier Name" value={form.cashier_name} onChangeText={set('cashier_name')} placeholder="Staff" isDark={isDark} />
-          <View style={{ height: 1, backgroundColor: dividerC, marginVertical: 4 }} />
           <Field label="Currency Symbol" value={form.currency} onChangeText={set('currency')} placeholder="₱" isDark={isDark} />
           <View style={{ height: 1, backgroundColor: dividerC, marginVertical: 4 }} />
           <Field label="Tax Rate (%)" value={form.tax_rate} onChangeText={set('tax_rate')} keyboardType="decimal-pad" placeholder="0" isDark={isDark} />

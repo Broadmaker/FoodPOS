@@ -436,6 +436,14 @@ const OrderDetailModal = ({ order, onClose, onVoid, onReprint, formatCurrency, i
               </View>
             ))}
           </Card>
+
+          {/* Notes */}
+          {order.notes ? (
+            <Card>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: textPri, marginBottom: 8 }}>Order Notes</Text>
+              <Text style={{ fontSize: 13, color: textMut, lineHeight: 18 }}>{order.notes}</Text>
+            </Card>
+          ) : null}
         </View>
 
         <View style={{ paddingHorizontal: 16, paddingBottom: 24, paddingTop: 12, borderTopWidth: 1, borderTopColor: borderC, gap: 10 }}>
