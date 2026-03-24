@@ -70,6 +70,7 @@ export default function SettingsScreen() {
   const [showStaff, setShowStaff] = useState(false);
   const [showPrinter, setShowPrinter] = useState(false);
   const [showExport, setShowExport] = useState(false);
+  const [showLicense, setShowLicense] = useState(false);
   const [form, setForm] = useState({ ...settings });
   const [saved, setSaved] = useState(false);
 
@@ -308,13 +309,22 @@ export default function SettingsScreen() {
         <View style={{ backgroundColor: cardBg, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: cardBorder }}>
           <SectionTitle title="About" isDark={isDark} />
           <View style={{ height: 1, backgroundColor: dividerC, marginVertical: 10 }} />
-          <InfoRow label="App Name" value="FoodPOS" isDark={isDark} />
+          <InfoRow label="App" value="FoodPOS" isDark={isDark} />
           <View style={{ height: 1, backgroundColor: dividerC }} />
-          <InfoRow label="Version" value="1.0.0 (Beta)" isDark={isDark} />
+          <InfoRow label="Version" value="1.0.0" isDark={isDark} />
           <View style={{ height: 1, backgroundColor: dividerC }} />
-          <InfoRow label="Database" value="Expo SQLite" isDark={isDark} />
+          <InfoRow label="Developer" value="Mark Kevin Sanig" isDark={isDark} />
           <View style={{ height: 1, backgroundColor: dividerC }} />
-          <InfoRow label="UI" value="NativeWind v4" isDark={isDark} />
+          <InfoRow label="Brand" value="BroadMarkee" isDark={isDark} />
+          <View style={{ height: 1, backgroundColor: dividerC }} />
+          <TouchableOpacity
+            onPress={() => setShowLicense(true)}
+            style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12 }}
+            activeOpacity={0.75}
+          >
+            <Text style={{ flex: 1, fontSize: 14, color: isDark ? '#71717A' : '#9CA3AF' }}>License & Terms of Use</Text>
+            <Ionicons name="chevron-forward" size={16} color={isDark ? '#3F3F46' : '#E5E7EB'} />
+          </TouchableOpacity>
         </View>
 
       {/* ── STAFF MODAL — outside ScrollView so context works ── */}
@@ -344,6 +354,86 @@ export default function SettingsScreen() {
       {/* Export Modal */}
       <Modal visible={showExport} animationType="slide" presentationStyle="fullScreen">
         <ExportScreen onClose={() => setShowExport(false)} />
+      </Modal>
+
+      {/* License Modal */}
+      <Modal visible={showLicense} animationType="slide" presentationStyle="pageSheet">
+        <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#18181B' : '#FFFFFF' }} edges={['top']}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: isDark ? '#27272A' : '#F3F4F6' }}>
+            <View style={{ width: 40 }} />
+            <Text style={{ fontSize: 16, fontWeight: '700', color: isDark ? '#FFFFFF' : '#111827' }}>License & Terms</Text>
+            <TouchableOpacity onPress={() => setShowLicense(false)}>
+              <Ionicons name="close" size={22} color={isDark ? '#71717A' : '#9CA3AF'} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
+
+            {/* Brand */}
+            <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+              <View style={{ width: 72, height: 72, borderRadius: 16, overflow: 'hidden', marginBottom: 10 }}>
+                <Image
+                  source={require('../../../assets/icon.png')}
+                  style={{ width: 96, height: 96, marginLeft: -12, marginTop: -12 }}
+                  resizeMode="cover"
+                />
+              </View>
+              <Text style={{ fontSize: 22, fontWeight: '800', color: isDark ? '#FFFFFF' : '#111827' }}>FoodPOS</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#F97316', marginTop: 2 }}>by BroadMarkee</Text>
+              <Text style={{ fontSize: 11, color: isDark ? '#52525B' : '#9CA3AF', marginTop: 4, letterSpacing: 1.5, textTransform: 'uppercase' }}>Point of Sale System</Text>
+            </View>
+
+            {/* License */}
+            <View style={{ backgroundColor: isDark ? '#27272A' : '#F9FAFB', borderRadius: 14, padding: 16 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? '#FFFFFF' : '#111827', marginBottom: 10 }}>Software License</Text>
+              <Text style={{ fontSize: 13, color: isDark ? '#A1A1AA' : '#4B5563', lineHeight: 20, marginBottom: 10 }}>
+                This software is licensed, not sold. By using FoodPOS, you agree to the following terms:
+              </Text>
+              {[
+                'This license grants one (1) shop a single non-transferable right to use FoodPOS.',
+                'You may not copy, distribute, resell, or sublicense this application to any third party.',
+                'Reverse engineering, modification, or decompilation of this app is strictly prohibited.',
+                'This is a one-time purchase license. Future major versions may require a separate license.',
+              ].map((item, i) => (
+                <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                  <Text style={{ fontSize: 13, color: '#F97316', fontWeight: '700' }}>{i + 1}.</Text>
+                  <Text style={{ flex: 1, fontSize: 13, color: isDark ? '#A1A1AA' : '#4B5563', lineHeight: 20 }}>{item}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Terms */}
+            <View style={{ backgroundColor: isDark ? '#27272A' : '#F9FAFB', borderRadius: 14, padding: 16 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? '#FFFFFF' : '#111827', marginBottom: 10 }}>Terms of Use</Text>
+              {[
+                'FoodPOS is provided "as is" without warranty of any kind, express or implied.',
+                'The developer is not liable for any loss of data, revenue, or business disruption arising from the use of this application.',
+                'All sales data is stored locally on your device. The developer has no access to your business data.',
+                'Support and updates are provided at the discretion of the developer.',
+                'Continued use of the app constitutes acceptance of these terms.',
+              ].map((item, i) => (
+                <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                  <Text style={{ fontSize: 13, color: '#F97316', fontWeight: '700' }}>•</Text>
+                  <Text style={{ flex: 1, fontSize: 13, color: isDark ? '#A1A1AA' : '#4B5563', lineHeight: 20 }}>{item}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Privacy */}
+            <View style={{ backgroundColor: isDark ? '#27272A' : '#F9FAFB', borderRadius: 14, padding: 16 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? '#FFFFFF' : '#111827', marginBottom: 10 }}>Data & Privacy</Text>
+              <Text style={{ fontSize: 13, color: isDark ? '#A1A1AA' : '#4B5563', lineHeight: 20 }}>
+                FoodPOS does not collect, transmit, or share any personal or business data. All information including orders, menu items, staff accounts, and settings are stored exclusively on this device using a local SQLite database.
+              </Text>
+            </View>
+
+            {/* Copyright */}
+            <View style={{ alignItems: 'center', paddingVertical: 12, gap: 4 }}>
+              <Text style={{ fontSize: 12, color: isDark ? '#52525B' : '#9CA3AF' }}>© {new Date().getFullYear()} Mark Kevin Sanig — BroadMarkee</Text>
+              <Text style={{ fontSize: 12, color: isDark ? '#52525B' : '#9CA3AF' }}>All rights reserved.</Text>
+            </View>
+
+          </ScrollView>
+        </SafeAreaView>
       </Modal>
     </View>
   );
