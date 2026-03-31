@@ -2,7 +2,7 @@ import 'react-native-gesture-handler';
 import './global.css';
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, LogBox } from 'react-native';
+import { View, Text, ActivityIndicator, LogBox, Image } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -14,19 +14,31 @@ import {
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
 
-import { initDatabase } from './src/database';
+import { initDatabase, getSetting } from './src/database';
 import { CartProvider } from './src/context/CartContext';
 import { AppProvider, useApp } from './src/context/AppContext';
 import { StaffProvider, useStaff } from './src/context/StaffContext';
+import { PrinterProvider } from './src/context/PrinterContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import LoginScreen from './src/screens/auth/LoginScreen';
+import ActivationScreen from './src/screens/auth/ActivationScreen';
 
 LogBox.ignoreLogs(['InteractionManager has been deprecated']);
 
 // ─── INNER ROOT ───────────────────────────────────────────────────────────────
-function Root() {
+function Root({ isActivated, onActivated }) {
   const { isDark } = useApp();
   const { currentStaff } = useStaff();
+
+  // Show activation screen if not activated
+  if (!isActivated) {
+    return (
+      <View style={{ flex: 1 }}>
+        <StatusBar style="dark" />
+        <ActivationScreen onActivated={onActivated} />
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1 }} className={isDark ? 'dark' : ''}>
@@ -46,7 +58,13 @@ function Root() {
 function SplashScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
-      <Text style={{ fontSize: 64, marginBottom: 16 }}>🍽️</Text>
+      <View style={{ width: 90, height: 90, borderRadius: 24, overflow: 'hidden', marginBottom: 16 }}>
+        <Image
+          source={require('./assets/icon.png')}
+          style={{ width: 120, height: 120, marginLeft: -15, marginTop: -15 }}
+          resizeMode="cover"
+        />
+      </View>
       <Text style={{ fontSize: 32, fontWeight: '800', color: '#F97316', letterSpacing: -1 }}>FoodPOS</Text>
       <Text style={{ fontSize: 14, color: '#9CA3AF', marginTop: 8 }}>Point of Sale System</Text>
       <ActivityIndicator color="#F97316" style={{ marginTop: 32 }} size="large" />
@@ -58,6 +76,7 @@ function SplashScreen() {
 export default function App() {
   const [dbReady, setDbReady] = useState(false);
   const [dbError, setDbError] = useState(null);
+  const [isActivated, setIsActivated] = useState(false);
 
   const [fontsLoaded] = useFonts({
     Poppins_400Regular,
@@ -70,6 +89,9 @@ export default function App() {
     (async () => {
       try {
         await initDatabase();
+        // Check activation status after DB is ready
+        const activated = getSetting('is_activated');
+        setIsActivated(activated === '1');
         setDbReady(true);
       } catch (e) {
         console.error('DB init error:', e);
@@ -77,6 +99,10 @@ export default function App() {
       }
     })();
   }, []);
+
+  const handleActivated = (shopName) => {
+    setIsActivated(true);
+  };
 
   if (!fontsLoaded || !dbReady) {
     return (
@@ -95,9 +121,11 @@ export default function App() {
     <SafeAreaProvider>
       <AppProvider>
         <StaffProvider>
-          <CartProvider>
-            <Root />
-          </CartProvider>
+          <PrinterProvider>
+            <CartProvider>
+              <Root isActivated={isActivated} onActivated={handleActivated} />
+            </CartProvider>
+          </PrinterProvider>
         </StaffProvider>
       </AppProvider>
     </SafeAreaProvider>
