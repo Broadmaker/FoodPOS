@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
   TextInput, ScrollView, Image,
@@ -12,11 +12,15 @@ import { IconButton, EmptyState } from '../../components/common';
 import { CategoryPills } from '../../components/common/CategoryPills';
 
 // ─── MENU ITEM CARD ───────────────────────────────────────────────────────────
-const MenuItemCard = React.memo(({ item, onPress, quantity, isDark }) => {
+// memo + stable onPress via useCallback in parent prevents re-render on cart changes
+const MenuItemCard = memo(({ item, onPress, quantity, isDark }) => {
   const isInCart = quantity > 0;
+  // Stable handler per card — no new function on every parent render
+  const handlePress = useCallback(() => onPress(item.id, item.name, item.price, item.image_emoji), [item.id]);
+
   return (
     <TouchableOpacity
-      onPress={() => onPress(item)}
+      onPress={handlePress}
       activeOpacity={0.85}
       style={{
         borderRadius: 16,
@@ -66,45 +70,53 @@ const MenuItemCard = React.memo(({ item, onPress, quantity, isDark }) => {
 });
 
 // ─── CART ITEM ROW ────────────────────────────────────────────────────────────
-const CartItemRow = ({ item, onIncrement, onDecrement, isDark }) => (
-  <View style={{
-    paddingVertical: 10,
-    paddingHorizontal: 2,
-    borderBottomWidth: 1,
-    borderBottomColor: isDark ? '#27272A' : '#F3F4F6',
-  }}>
-    <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 6 }}>
-      <Text
-        style={{ flex: 1, fontSize: 12, fontWeight: '600', color: isDark ? '#FFFFFF' : '#111827', lineHeight: 16, paddingRight: 8 }}
-        numberOfLines={2}
-      >
-        {item.name}
-      </Text>
-      <Text style={{ fontSize: 12, fontWeight: '800', color: '#F97316', flexShrink: 0 }}>
-        ₱{(item.price * item.quantity).toFixed(2)}
-      </Text>
+// memo + stable per-row callbacks — no re-renders unless this item's data changes
+const CartItemRow = memo(({ item, onIncrement, onDecrement, isDark }) => {
+  const handleIncrement = useCallback(() => onIncrement(item.id), [item.id, onIncrement]);
+  const handleDecrement = useCallback(() => onDecrement(item.id), [item.id, onDecrement]);
+
+  return (
+    <View style={{
+      paddingVertical: 10,
+      paddingHorizontal: 2,
+      borderBottomWidth: 1,
+      borderBottomColor: isDark ? '#27272A' : '#F3F4F6',
+    }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 6 }}>
+        <Text
+          style={{ flex: 1, fontSize: 12, fontWeight: '600', color: isDark ? '#FFFFFF' : '#111827', lineHeight: 16, paddingRight: 8 }}
+          numberOfLines={2}
+        >
+          {item.name}
+        </Text>
+        <Text style={{ fontSize: 12, fontWeight: '800', color: '#F97316', flexShrink: 0 }}>
+          ₱{(item.price * item.quantity).toFixed(2)}
+        </Text>
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <TouchableOpacity
+          onPress={handleDecrement}
+          style={{ width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#3F3F46' : '#F3F4F6' }}
+        >
+          <Ionicons name="remove" size={13} color={isDark ? '#E4E4E7' : '#374151'} />
+        </TouchableOpacity>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? '#FFFFFF' : '#111827', minWidth: 20, textAlign: 'center' }}>
+          {item.quantity}
+        </Text>
+        <TouchableOpacity
+          onPress={handleIncrement}
+          style={{ width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F97316' }}
+        >
+          <Ionicons name="add" size={13} color="white" />
+        </TouchableOpacity>
+      </View>
     </View>
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-      <TouchableOpacity
-        onPress={() => onDecrement(item.id)}
-        style={{ width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#3F3F46' : '#F3F4F6' }}
-      >
-        <Ionicons name="remove" size={13} color={isDark ? '#E4E4E7' : '#374151'} />
-      </TouchableOpacity>
-      <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? '#FFFFFF' : '#111827', minWidth: 20, textAlign: 'center' }}>
-        {item.quantity}
-      </Text>
-      <TouchableOpacity
-        onPress={() => onIncrement(item.id)}
-        style={{ width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F97316' }}
-      >
-        <Ionicons name="add" size={13} color="white" />
-      </TouchableOpacity>
-    </View>
-  </View>
-);
+  );
+});
 
 // ─── MAIN SCREEN ──────────────────────────────────────────────────────────────
+const CARD_HEIGHT = 148; // Approximate fixed height for 2-col menu cards
+
 export default function POSScreen({ navigation }) {
   const [menuItems, setMenuItems] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -126,19 +138,48 @@ export default function POSScreen({ navigation }) {
     catch (e) { console.warn(e); }
   }, [selectedCategory]);
 
-  const handleCategorySelect = useCallback((id) => {
-    setSelectedCategory(id);
-  }, []);
+  const handleCategorySelect = useCallback((id) => setSelectedCategory(id), []);
 
-  const filteredItems = searchQuery.trim()
-    ? menuItems.filter((i) => i.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    : menuItems;
+  // Memoized filtered list — only recalculates when menuItems or search changes
+  const filteredItems = useMemo(() =>
+    searchQuery.trim()
+      ? menuItems.filter(i => i.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      : menuItems,
+    [menuItems, searchQuery]
+  );
 
-  const getQty = (id) => (items.find((i) => i.id === id) || {}).quantity || 0;
+  // Build a quantity map — O(1) lookup instead of Array.find on every card
+  const qtyMap = useMemo(() => {
+    const map = {};
+    items.forEach(i => { map[i.id] = i.quantity; });
+    return map;
+  }, [items]);
 
-  const handleAddItem = (item) => {
-    addItem({ id: item.id, name: item.name, price: item.price, image_emoji: item.image_emoji });
-  };
+  // Stable add handler — accepts primitives not the full item object
+  // This way MenuItemCard.handlePress only depends on item.id (stable)
+  const handleAddItem = useCallback((id, name, price, image_emoji) => {
+    addItem({ id, name, price, image_emoji });
+  }, [addItem]);
+
+  // Stable FlatList helpers
+  const keyExtractor = useCallback((item) => String(item.id), []);
+
+  const getItemLayout = useCallback((_, index) => ({
+    length: CARD_HEIGHT,
+    offset: CARD_HEIGHT * Math.floor(index / 2),
+    index,
+  }), []);
+
+  const renderItem = useCallback(({ item }) => (
+    <View style={{ flex: 1 }}>
+      <MenuItemCard
+        item={item}
+        quantity={qtyMap[item.id] || 0}
+        onPress={handleAddItem}
+        isDark={isDark}
+      />
+    </View>
+  ), [qtyMap, handleAddItem, isDark]);
 
   const bg      = isDark ? '#000000' : '#F2F2F7';
   const surfBg  = isDark ? '#18181B' : '#FFFFFF';
@@ -163,7 +204,6 @@ export default function POSScreen({ navigation }) {
       <View style={{ flex: 1, flexDirection: 'row' }}>
         {/* MENU PANEL */}
         <View style={{ flex: 3, borderRightWidth: 1, borderRightColor: borderC }}>
-
           {/* Search */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, margin: 10, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: inputBg, borderRadius: 12, borderWidth: 1, borderColor: borderC }}>
             <Ionicons name="search-outline" size={15} color={textMut} />
@@ -181,7 +221,7 @@ export default function POSScreen({ navigation }) {
             )}
           </View>
 
-          {/* CATEGORY PILLS */}
+          {/* Category Pills */}
           <CategoryPills
             categories={categories}
             selected={selectedCategory}
@@ -196,15 +236,16 @@ export default function POSScreen({ navigation }) {
           ) : (
             <FlatList
               data={filteredItems}
-              keyExtractor={(item) => String(item.id)}
+              keyExtractor={keyExtractor}
               numColumns={2}
+              renderItem={renderItem}
+              removeClippedSubviews={true}
+              maxToRenderPerBatch={8}
+              updateCellsBatchingPeriod={50}
+              initialNumToRender={10}
+              windowSize={8}
               contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 20 }}
               columnWrapperStyle={{ gap: 8 }}
-              renderItem={({ item }) => (
-                <View style={{ flex: 1 }}>
-                  <MenuItemCard item={item} quantity={getQty(item.id)} onPress={handleAddItem} isDark={isDark} />
-                </View>
-              )}
               showsVerticalScrollIndicator={false}
             />
           )}
@@ -230,7 +271,13 @@ export default function POSScreen({ navigation }) {
           ) : (
             <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 10 }} showsVerticalScrollIndicator={false}>
               {items.map((item) => (
-                <CartItemRow key={item.id} item={item} onIncrement={increment} onDecrement={decrement} isDark={isDark} />
+                <CartItemRow
+                  key={item.id}
+                  item={item}
+                  onIncrement={increment}
+                  onDecrement={decrement}
+                  isDark={isDark}
+                />
               ))}
             </ScrollView>
           )}

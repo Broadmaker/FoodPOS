@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, Modal,
   TextInput, Alert, Switch, ScrollView, Image,
@@ -23,11 +23,31 @@ const FOOD_EMOJIS = [
   '🫔','🥐','🍞','🧆','🥙','🍜','🍣','🍱','🥟','🦐',
 ];
 
+// ─── EMOJI GRID — separate memoized component ─────────────────────────────────
+// Only re-renders when selected emoji changes, not on every form keystroke
+const EmojiGrid = memo(({ selected, onSelect, isDark }) => (
+  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+    {FOOD_EMOJIS.map((em) => (
+      <TouchableOpacity
+        key={em}
+        onPress={() => onSelect(em)}
+        style={{
+          width: 44, height: 44, borderRadius: 10,
+          alignItems: 'center', justifyContent: 'center', borderWidth: 2,
+          borderColor: selected === em ? '#F97316' : 'transparent',
+          backgroundColor: selected === em ? '#FFF7ED' : isDark ? '#27272A' : '#F9FAFB',
+        }}
+      >
+        <Text style={{ fontSize: 22 }}>{em}</Text>
+      </TouchableOpacity>
+    ))}
+  </View>
+));
+
 // ─── CSV PARSER ───────────────────────────────────────────────────────────────
 const parseCSV = (text) => {
   const lines = text.trim().split('\n');
   if (lines.length < 2) return [];
-  // Normalize headers to lowercase and trim
   const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, '').replace(/\r/g, ''));
   return lines.slice(1)
     .filter(line => line.trim())
@@ -48,20 +68,15 @@ const parseExcel = async (uri) => {
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-    const mapped = rows.map(row => {
-      const normalized = {};
-      Object.keys(row).forEach(k => {
-        const key = k.toLowerCase().trim().replace(/\s+/g, '_');
-        normalized[key] = String(row[k]).trim();
-      });
-      return normalized;
-    });
-    const filtered = mapped.filter(r => {
-      const hasName = r.name && r.name.length > 0;
-      const hasPrice = r.price && !isNaN(parseFloat(r.price));
-      return hasName && hasPrice;
-    });
-    return filtered;
+    return rows
+      .map(row => {
+        const normalized = {};
+        Object.keys(row).forEach(k => {
+          normalized[k.toLowerCase().trim().replace(/\s+/g, '_')] = String(row[k]).trim();
+        });
+        return normalized;
+      })
+      .filter(r => r.name && r.name.length > 0 && r.price && !isNaN(parseFloat(r.price)));
   } catch (e) {
     console.warn('Excel parse error:', e.message);
     return [];
@@ -69,13 +84,13 @@ const parseExcel = async (uri) => {
 };
 
 // ─── ITEM FORM MODAL ──────────────────────────────────────────────────────────
-const ItemFormModal = ({ visible, item, categories, onSave, onClose, isDark }) => {
+const ItemFormModal = memo(({ visible, item, categories, onSave, onClose, isDark }) => {
   const [form, setForm] = useState({
     name: '', description: '', price: '',
     category_id: null, image_emoji: '🍽️',
     image_uri: null, is_available: true, is_featured: false,
   });
-  const [activeTab, setActiveTab] = useState('emoji'); // 'emoji' | 'camera'
+  const [activeTab, setActiveTab] = useState('emoji');
 
   useEffect(() => {
     if (item) {
@@ -90,7 +105,12 @@ const ItemFormModal = ({ visible, item, categories, onSave, onClose, isDark }) =
     }
   }, [item, visible]);
 
-  const pickImage = async (source) => {
+  // Stable handler — prevents EmojiGrid from re-rendering on every keystroke
+  const handleEmojiSelect = useCallback((em) => {
+    setForm(f => ({ ...f, image_emoji: em, image_uri: null }));
+  }, []);
+
+  const pickImage = useCallback(async (source) => {
     try {
       let result;
       if (source === 'camera') {
@@ -106,7 +126,7 @@ const ItemFormModal = ({ visible, item, categories, onSave, onClose, isDark }) =
         setForm(f => ({ ...f, image_uri: result.assets[0].uri, image_emoji: null }));
       }
     } catch (e) { Alert.alert('Error', 'Could not pick image.'); }
-  };
+  }, []);
 
   const bg = isDark ? '#18181B' : '#FFFFFF';
   const borderC = isDark ? '#27272A' : '#F3F4F6';
@@ -118,7 +138,6 @@ const ItemFormModal = ({ visible, item, categories, onSave, onClose, isDark }) =
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
       <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top']}>
-        {/* Header */}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: borderC }}>
           <TouchableOpacity onPress={onClose}>
             <Text style={{ fontSize: 15, fontWeight: '600', color: '#EF4444' }}>Cancel</Text>
@@ -132,13 +151,9 @@ const ItemFormModal = ({ visible, item, categories, onSave, onClose, isDark }) =
             <Text style={{ fontSize: 15, fontWeight: '700', color: '#F97316' }}>Save</Text>
           </TouchableOpacity>
         </View>
-
         <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }} showsVerticalScrollIndicator={false}>
-
-          {/* Image Section */}
           <Card>
             <Text style={labelStyle}>Item Image</Text>
-            {/* Tab toggle */}
             <View style={{ flexDirection: 'row', borderRadius: 12, overflow: 'hidden', borderWidth: 1.5, borderColor: isDark ? '#3F3F46' : '#E5E7EB', marginBottom: 14 }}>
               {['emoji', 'camera'].map((tab) => (
                 <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={{ flex: 1, paddingVertical: 8, alignItems: 'center', backgroundColor: activeTab === tab ? '#F97316' : 'transparent' }}>
@@ -149,26 +164,17 @@ const ItemFormModal = ({ visible, item, categories, onSave, onClose, isDark }) =
 
             {activeTab === 'emoji' ? (
               <>
-                {/* Current emoji preview */}
                 <View style={{ alignItems: 'center', marginBottom: 12 }}>
                   <Text style={{ fontSize: 56 }}>{form.image_emoji || '🍽️'}</Text>
                 </View>
-                {/* Emoji grid */}
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
-                  {FOOD_EMOJIS.map((em) => (
-                    <TouchableOpacity
-                      key={em}
-                      onPress={() => setForm(f => ({ ...f, image_emoji: em, image_uri: null }))}
-                      style={{ width: 44, height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: form.image_emoji === em ? '#F97316' : 'transparent', backgroundColor: form.image_emoji === em ? '#FFF7ED' : isDark ? '#27272A' : '#F9FAFB' }}
-                    >
-                      <Text style={{ fontSize: 22 }}>{em}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                <EmojiGrid
+                  selected={form.image_emoji}
+                  onSelect={handleEmojiSelect}
+                  isDark={isDark}
+                />
               </>
             ) : (
               <View style={{ gap: 10 }}>
-                {/* Photo preview */}
                 {form.image_uri ? (
                   <View style={{ alignItems: 'center', marginBottom: 8 }}>
                     <Image source={{ uri: form.image_uri }} style={{ width: 100, height: 100, borderRadius: 16 }} />
@@ -195,25 +201,21 @@ const ItemFormModal = ({ visible, item, categories, onSave, onClose, isDark }) =
             )}
           </Card>
 
-          {/* Name */}
           <Card>
             <Text style={labelStyle}>Item Name *</Text>
             <TextInput value={form.name} onChangeText={v => setForm(f => ({ ...f, name: v }))} placeholder="e.g. Chicken Adobo" placeholderTextColor={textMut} style={inputStyle} />
           </Card>
 
-          {/* Description */}
           <Card>
             <Text style={labelStyle}>Description</Text>
             <TextInput value={form.description} onChangeText={v => setForm(f => ({ ...f, description: v }))} placeholder="Short description" placeholderTextColor={textMut} multiline numberOfLines={2} style={[inputStyle, { minHeight: 64, textAlignVertical: 'top' }]} />
           </Card>
 
-          {/* Price */}
           <Card>
             <Text style={labelStyle}>Price (₱) *</Text>
             <TextInput value={form.price} onChangeText={v => setForm(f => ({ ...f, price: v }))} placeholder="0.00" keyboardType="decimal-pad" placeholderTextColor={textMut} style={inputStyle} />
           </Card>
 
-          {/* Category */}
           <Card>
             <Text style={labelStyle}>Category</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
@@ -228,7 +230,6 @@ const ItemFormModal = ({ visible, item, categories, onSave, onClose, isDark }) =
             </ScrollView>
           </Card>
 
-          {/* Toggles */}
           <Card>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 }}>
               <View>
@@ -250,14 +251,14 @@ const ItemFormModal = ({ visible, item, categories, onSave, onClose, isDark }) =
       </SafeAreaView>
     </Modal>
   );
-};
+});
 
 // ─── BULK IMPORT MODAL ────────────────────────────────────────────────────────
-const BulkImportModal = ({ visible, onClose, onImport, isDark }) => {
+const BulkImportModal = memo(({ visible, onClose, onImport, isDark }) => {
   const [preview, setPreview] = useState([]);
   const [fileName, setFileName] = useState('');
 
-  const handlePickFile = async () => {
+  const handlePickFile = useCallback(async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['text/csv', 'text/comma-separated-values',
@@ -268,10 +269,8 @@ const BulkImportModal = ({ visible, onClose, onImport, isDark }) => {
       if (result.canceled) return;
       const asset = result.assets?.[0];
       if (!asset) return;
-
       const name = asset.name || '';
       const isExcel = name.endsWith('.xlsx') || name.endsWith('.xls');
-
       let parsed = [];
       if (isExcel) {
         parsed = await parseExcel(asset.uri);
@@ -287,7 +286,7 @@ const BulkImportModal = ({ visible, onClose, onImport, isDark }) => {
       console.warn('File pick error:', e.message);
       Alert.alert('Error', 'Could not read file. Make sure it is a valid CSV or Excel file.');
     }
-  };
+  }, []);
 
   const bg = isDark ? '#18181B' : '#FFFFFF';
   const borderC = isDark ? '#27272A' : '#F3F4F6';
@@ -304,9 +303,7 @@ const BulkImportModal = ({ visible, onClose, onImport, isDark }) => {
           <Text style={{ fontSize: 16, fontWeight: '700', color: textPri }}>Bulk Import</Text>
           <View style={{ width: 60 }} />
         </View>
-
         <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
-          {/* Instructions */}
           <Card>
             <Text style={{ fontSize: 14, fontWeight: '700', color: textPri, marginBottom: 8 }}>CSV Format</Text>
             <View style={{ backgroundColor: isDark ? '#27272A' : '#F9FAFB', borderRadius: 10, padding: 12 }}>
@@ -317,8 +314,6 @@ const BulkImportModal = ({ visible, onClose, onImport, isDark }) => {
             <Text style={{ fontSize: 12, color: textMut, marginTop: 8 }}>Required: name, price. Optional: description, category</Text>
             <Text style={{ fontSize: 12, color: textMut, marginTop: 4 }}>Supports: CSV (.csv) and Excel (.xlsx)</Text>
           </Card>
-
-          {/* Pick button */}
           <TouchableOpacity
             onPress={handlePickFile}
             style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 16, borderRadius: 14, borderWidth: 2, borderColor: '#F97316', borderStyle: 'dashed', backgroundColor: isDark ? '#27272A' : '#FFF7ED' }}
@@ -328,8 +323,6 @@ const BulkImportModal = ({ visible, onClose, onImport, isDark }) => {
               {fileName || 'Select CSV or Excel File'}
             </Text>
           </TouchableOpacity>
-
-          {/* Preview */}
           {preview.length > 0 && (
             <Card>
               <Text style={{ fontSize: 14, fontWeight: '700', color: textPri, marginBottom: 10 }}>Preview ({preview.length} items)</Text>
@@ -357,21 +350,24 @@ const BulkImportModal = ({ visible, onClose, onImport, isDark }) => {
       </SafeAreaView>
     </Modal>
   );
-};
+});
 
-// ─── MENU ITEM ROW ────────────────────────────────────────────────────────────
-const MenuItemRow = ({ item, onEdit, onDelete, isDark }) => {
+// ─── MENU ITEM ROW — memoized, no inline functions ────────────────────────────
+const MenuItemRow = memo(({ item, onEdit, onDelete, isDark }) => {
   const borderC = isDark ? '#27272A' : '#F3F4F6';
   const textPri = isDark ? '#FFFFFF' : '#111827';
   const textMut = isDark ? '#71717A' : '#9CA3AF';
 
+  // Stable per-row handlers — created once per row mount, not on every render
+  const handleEdit   = useCallback(() => onEdit(item),    [item, onEdit]);
+  const handleDelete = useCallback(() => onDelete(item.id), [item.id, onDelete]);
+
   return (
     <TouchableOpacity
-      onPress={() => onEdit(item)}
+      onPress={handleEdit}
       activeOpacity={0.75}
       style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: borderC, backgroundColor: isDark ? '#18181B' : '#FFFFFF' }}
     >
-      {/* Image or Emoji */}
       <View style={{ width: 46, height: 46, borderRadius: 12, backgroundColor: isDark ? '#27272A' : '#F3F4F6', alignItems: 'center', justifyContent: 'center', marginRight: 12, overflow: 'hidden' }}>
         {item.image_uri ? (
           <Image source={{ uri: item.image_uri }} style={{ width: 46, height: 46 }} />
@@ -394,7 +390,7 @@ const MenuItemRow = ({ item, onEdit, onDelete, isDark }) => {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <Text style={{ fontSize: 15, fontWeight: '800', color: '#F97316' }}>₱{Number(item.price).toFixed(2)}</Text>
         <TouchableOpacity
-          onPress={() => onDelete(item.id)}
+          onPress={handleDelete}
           style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: isDark ? '#2D1B1B' : '#FEE2E2', alignItems: 'center', justifyContent: 'center' }}
         >
           <Ionicons name="trash-outline" size={16} color="#DC2626" />
@@ -402,9 +398,11 @@ const MenuItemRow = ({ item, onEdit, onDelete, isDark }) => {
       </View>
     </TouchableOpacity>
   );
-};
+});
 
 // ─── MAIN SCREEN ──────────────────────────────────────────────────────────────
+const ITEM_HEIGHT = 74; // Fixed height for FlatList optimization
+
 export default function MenuScreen() {
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -425,25 +423,32 @@ export default function MenuScreen() {
   useEffect(() => { loadData(); }, []);
   useEffect(() => { loadItems(); }, [selectedCat]);
 
-  const loadData = useCallback(() => { setCategories(getCategories()); loadItems(); }, []);
+  const loadData = useCallback(() => {
+    setCategories(getCategories());
+    loadItems();
+  }, []);
+
   const loadItems = useCallback(() => {
     try { setItems(getMenuItems(selectedCat)); } catch (e) { console.warn(e); }
   }, [selectedCat]);
 
-  const handleSave = (form) => {
+  // Memoized handlers — stable references prevent child re-renders
+  const handleSave = useCallback((form) => {
     if (editItem) updateMenuItem(editItem.id, form);
     else addMenuItem(form);
-    setShowForm(false); setEditItem(null); loadItems();
-  };
+    setShowForm(false);
+    setEditItem(null);
+    loadItems();
+  }, [editItem, loadItems]);
 
-  const handleDelete = (id) => {
+  const handleDelete = useCallback((id) => {
     Alert.alert('Remove Item', 'Remove this item from the menu?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Remove', style: 'destructive', onPress: () => { deleteMenuItem(id); loadItems(); } },
     ]);
-  };
+  }, [loadItems]);
 
-  const handleBulkImport = (rows) => {
+  const handleBulkImport = useCallback((rows) => {
     let imported = 0;
     rows.forEach(row => {
       try {
@@ -462,11 +467,38 @@ export default function MenuScreen() {
     });
     loadItems();
     Alert.alert('Import Complete', `Successfully imported ${imported} items.`);
-  };
+  }, [categories, loadItems]);
 
-  const filteredItems = search.trim()
-    ? items.filter(i => i.name.toLowerCase().includes(search.toLowerCase()))
-    : items;
+  const handleEdit = useCallback((item) => {
+    setEditItem(item);
+    setShowForm(true);
+  }, []);
+
+  // Memoized filtered list — only recalculates when items or search changes
+  const filteredItems = useMemo(() =>
+    search.trim()
+      ? items.filter(i => i.name.toLowerCase().includes(search.toLowerCase()))
+      : items,
+    [items, search]
+  );
+
+  // FlatList optimization — fixed height rows
+  const getItemLayout = useCallback((_, index) => ({
+    length: ITEM_HEIGHT,
+    offset: ITEM_HEIGHT * index,
+    index,
+  }), []);
+
+  const keyExtractor = useCallback((i) => String(i.id), []);
+
+  const renderItem = useCallback(({ item }) => (
+    <MenuItemRow
+      item={item}
+      onEdit={handleEdit}
+      onDelete={handleDelete}
+      isDark={isDark}
+    />
+  ), [handleEdit, handleDelete, isDark]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top']}>
@@ -503,7 +535,7 @@ export default function MenuScreen() {
         </View>
 
         {/* Search */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: isDark ? '#27272A' : '#F3F4F6', borderRadius: 12, borderWidth: 1, borderColor: borderC }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: isDark ? '#27272A' : '#F3F4F6', borderRadius: 12, borderWidth: 1, borderColor: borderC, marginBottom: 10 }}>
           <Ionicons name="search-outline" size={15} color={textMut} />
           <TextInput
             value={search}
@@ -524,7 +556,7 @@ export default function MenuScreen() {
       <CategoryPills
         categories={categories}
         selected={selectedCat}
-        onSelect={(id) => setSelectedCat(id)}
+        onSelect={setSelectedCat}
         isDark={isDark}
       />
 
@@ -539,39 +571,45 @@ export default function MenuScreen() {
       ) : (
         <FlatList
           data={filteredItems}
-          keyExtractor={(i) => String(i.id)}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          getItemLayout={getItemLayout}
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={10}
+          updateCellsBatchingPeriod={50}
+          initialNumToRender={12}
+          windowSize={10}
           contentContainerStyle={{ paddingTop: 4, paddingBottom: 20 }}
-          renderItem={({ item }) => (
-            <MenuItemRow
-              item={item}
-              onEdit={(i) => { setEditItem(i); setShowForm(true); }}
-              onDelete={handleDelete}
-              isDark={isDark}
-            />
-          )}
           showsVerticalScrollIndicator={false}
         />
       )}
 
-      <Modal visible={showCategories} animationType="slide" presentationStyle="fullScreen">
-        <CategoryScreen onClose={() => { setShowCategories(false); loadData(); }} />
-      </Modal>
+      {/* Fix: only mount when open — clears emoji grid memory when closed */}
+      {showCategories && (
+        <Modal visible={showCategories} animationType="slide" presentationStyle="fullScreen">
+          <CategoryScreen onClose={() => { setShowCategories(false); loadData(); }} />
+        </Modal>
+      )}
 
-      <ItemFormModal
-        visible={showForm}
-        item={editItem}
-        categories={categories}
-        onSave={handleSave}
-        onClose={() => { setShowForm(false); setEditItem(null); }}
-        isDark={isDark}
-      />
+      {showForm && (
+        <ItemFormModal
+          visible={showForm}
+          item={editItem}
+          categories={categories}
+          onSave={handleSave}
+          onClose={() => { setShowForm(false); setEditItem(null); }}
+          isDark={isDark}
+        />
+      )}
 
-      <BulkImportModal
-        visible={showImport}
-        onClose={() => setShowImport(false)}
-        onImport={handleBulkImport}
-        isDark={isDark}
-      />
+      {showImport && (
+        <BulkImportModal
+          visible={showImport}
+          onClose={() => setShowImport(false)}
+          onImport={handleBulkImport}
+          isDark={isDark}
+        />
+      )}
     </SafeAreaView>
   );
 }

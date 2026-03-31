@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, Modal,
-  Alert, RefreshControl, TextInput, ScrollView, Dimensions,
+  Alert, RefreshControl, TextInput, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,7 +13,7 @@ import { buildReceiptText } from '../../utils/receiptFormatter';
 import { Button, Card, Divider, EmptyState } from '../../components/common';
 import { PinPad } from '../../components/common/PinPad';
 
-// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+// ─── CONSTANTS — defined outside component, never recreated ───────────────────
 const STATUS_STYLES = {
   completed: { bg: '#DCFCE7', text: '#16A34A', label: 'Completed' },
   voided:    { bg: '#FEE2E2', text: '#DC2626', label: 'Voided'    },
@@ -24,21 +24,21 @@ const PAY_ICONS = {
   gcash: 'phone-portrait-outline',
 };
 const DATE_FILTERS = [
-  { id: 'today',   label: 'Today' },
-  { id: 'week',    label: 'This Week' },
-  { id: 'month',   label: 'This Month' },
-  { id: 'all',     label: 'All' },
-  { id: 'custom',  label: 'Custom' },
+  { id: 'today',  label: 'Today'     },
+  { id: 'week',   label: 'This Week' },
+  { id: 'month',  label: 'This Month'},
+  { id: 'all',    label: 'All'       },
+  { id: 'custom', label: 'Custom'    },
 ];
 const PAY_FILTERS = [
-  { id: null,    label: 'All' },
-  { id: 'cash',  label: 'Cash' },
+  { id: null,    label: 'All'   },
+  { id: 'cash',  label: 'Cash'  },
   { id: 'gcash', label: 'GCash' },
 ];
 const STATUS_FILTERS = [
-  { id: null,        label: 'All' },
+  { id: null,        label: 'All'       },
   { id: 'completed', label: 'Completed' },
-  { id: 'voided',    label: 'Voided' },
+  { id: 'voided',    label: 'Voided'    },
 ];
 
 const fmt = (d) => d.toISOString().slice(0, 10);
@@ -54,15 +54,15 @@ const getDateRange = (filterId) => {
     const from = new Date(today.getFullYear(), today.getMonth(), 1);
     return { from: fmt(from), to: fmt(today) };
   }
-  return { from: null, to: null }; // 'all' and 'custom' handled separately
+  return { from: null, to: null };
 };
 
 // ─── MINI CALENDAR ────────────────────────────────────────────────────────────
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-const MiniCalendar = ({ selectedFrom, selectedTo, onSelectDate, isDark }) => {
-  const [viewYear, setViewYear] = useState(() => new Date().getFullYear());
+const MiniCalendar = memo(({ selectedFrom, selectedTo, onSelectDate, isDark }) => {
+  const [viewYear, setViewYear]   = useState(() => new Date().getFullYear());
   const [viewMonth, setViewMonth] = useState(() => new Date().getMonth());
 
   const textPri = isDark ? '#FFFFFF' : '#111827';
@@ -70,95 +70,60 @@ const MiniCalendar = ({ selectedFrom, selectedTo, onSelectDate, isDark }) => {
   const cellBg  = isDark ? '#27272A' : '#F9FAFB';
   const today   = fmt(new Date());
 
-  const prevMonth = () => {
+  const prevMonth = useCallback(() => {
     if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
     else setViewMonth(m => m - 1);
-  };
-  const nextMonth = () => {
+  }, [viewMonth]);
+
+  const nextMonth = useCallback(() => {
     if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); }
     else setViewMonth(m => m + 1);
-  };
+  }, [viewMonth]);
 
-  // Build calendar grid
-  const firstDay = new Date(viewYear, viewMonth, 1).getDay();
-  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-  const cells = [];
-  for (let i = 0; i < firstDay; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-  while (cells.length % 7 !== 0) cells.push(null);
-
-  const getCellDate = (d) => {
+  const { cells, getCellDate } = useMemo(() => {
+    const firstDay    = new Date(viewYear, viewMonth, 1).getDay();
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    const c = [];
+    for (let i = 0; i < firstDay; i++) c.push(null);
+    for (let d = 1; d <= daysInMonth; d++) c.push(d);
+    while (c.length % 7 !== 0) c.push(null);
     const mm = String(viewMonth + 1).padStart(2, '0');
-    const dd = String(d).padStart(2, '0');
-    return `${viewYear}-${mm}-${dd}`;
-  };
-
-  const isSelected = (d) => {
-    if (!d) return false;
-    const date = getCellDate(d);
-    return date === selectedFrom || date === selectedTo;
-  };
-
-  const isInRange = (d) => {
-    if (!d || !selectedFrom || !selectedTo) return false;
-    const date = getCellDate(d);
-    return date > selectedFrom && date < selectedTo;
-  };
-
-  const isToday = (d) => d && getCellDate(d) === today;
-  const isFuture = (d) => d && getCellDate(d) > today;
+    const getCellDate = (d) => `${viewYear}-${mm}-${String(d).padStart(2, '0')}`;
+    return { cells: c, getCellDate };
+  }, [viewYear, viewMonth]);
 
   return (
     <View>
-      {/* Month navigation */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <TouchableOpacity onPress={prevMonth} style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: cellBg, alignItems: 'center', justifyContent: 'center' }}>
           <Ionicons name="chevron-back" size={18} color={textPri} />
         </TouchableOpacity>
-        <Text style={{ fontSize: 16, fontWeight: '700', color: textPri }}>
-          {MONTHS[viewMonth]} {viewYear}
-        </Text>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: textPri }}>{MONTHS[viewMonth]} {viewYear}</Text>
         <TouchableOpacity onPress={nextMonth} style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: cellBg, alignItems: 'center', justifyContent: 'center' }}>
           <Ionicons name="chevron-forward" size={18} color={textPri} />
         </TouchableOpacity>
       </View>
-
-      {/* Day headers */}
       <View style={{ flexDirection: 'row', marginBottom: 8 }}>
         {DAYS.map((day) => (
-          <Text key={day} style={{ flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '700', color: textMut }}>
-            {day}
-          </Text>
+          <Text key={day} style={{ flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '700', color: textMut }}>{day}</Text>
         ))}
       </View>
-
-      {/* Grid */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
         {cells.map((d, i) => {
-          const selected = isSelected(d);
-          const inRange  = isInRange(d);
-          const todayCell = isToday(d);
-          const future   = isFuture(d);
+          const cellDate = d ? getCellDate(d) : null;
+          const selected = cellDate && (cellDate === selectedFrom || cellDate === selectedTo);
+          const inRange  = cellDate && selectedFrom && selectedTo && cellDate > selectedFrom && cellDate < selectedTo;
+          const todayCell = cellDate && cellDate === today;
+          const future   = cellDate && cellDate > today;
           return (
             <TouchableOpacity
               key={i}
-              disabled={!d || future}
+              disabled={!d || !!future}
               onPress={() => d && !future && onSelectDate(getCellDate(d))}
-              style={{
-                width: `${100 / 7}%`,
-                aspectRatio: 1,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: selected ? '#F97316' : inRange ? '#FFF7ED' : 'transparent',
-                borderRadius: selected ? 10 : 0,
-              }}
+              style={{ width: `${100 / 7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: selected ? '#F97316' : inRange ? '#FFF7ED' : 'transparent', borderRadius: selected ? 10 : 0 }}
             >
               {d ? (
-                <Text style={{
-                  fontSize: 13,
-                  fontWeight: selected ? '800' : todayCell ? '700' : '400',
-                  color: selected ? '#FFFFFF' : future ? (isDark ? '#3F3F46' : '#D1D5DB') : todayCell ? '#F97316' : inRange ? '#F97316' : textPri,
-                }}>
+                <Text style={{ fontSize: 13, fontWeight: selected ? '800' : todayCell ? '700' : '400', color: selected ? '#FFFFFF' : future ? (isDark ? '#3F3F46' : '#D1D5DB') : todayCell ? '#F97316' : inRange ? '#F97316' : textPri }}>
                   {d}
                 </Text>
               ) : null}
@@ -171,126 +136,79 @@ const MiniCalendar = ({ selectedFrom, selectedTo, onSelectDate, isDark }) => {
       </View>
     </View>
   );
-};
+});
 
-// ─── DATE RANGE PICKER MODAL ──────────────────────────────────────────────────
-const DateRangeModal = ({ visible, fromDate, toDate, onApply, onClose, isDark }) => {
-  const [tempFrom, setTempFrom] = useState(fromDate || '');
-  const [tempTo, setTempTo]     = useState(toDate || '');
-  const [selecting, setSelecting] = useState('from'); // 'from' | 'to'
+// ─── DATE RANGE MODAL ─────────────────────────────────────────────────────────
+const DateRangeModal = memo(({ visible, fromDate, toDate, onApply, onClose, isDark }) => {
+  const [tempFrom, setTempFrom]   = useState(fromDate || '');
+  const [tempTo, setTempTo]       = useState(toDate   || '');
+  const [selecting, setSelecting] = useState('from');
 
   useEffect(() => {
-    if (visible) {
-      setTempFrom(fromDate || '');
-      setTempTo(toDate || '');
-      setSelecting('from');
-    }
+    if (visible) { setTempFrom(fromDate || ''); setTempTo(toDate || ''); setSelecting('from'); }
   }, [visible]);
 
-  const bg      = isDark ? '#18181B' : '#FFFFFF';
+  const bg = isDark ? '#18181B' : '#FFFFFF';
   const borderC = isDark ? '#27272A' : '#F3F4F6';
   const textPri = isDark ? '#FFFFFF' : '#111827';
   const textMut = isDark ? '#71717A' : '#9CA3AF';
 
-  const handleSelectDate = (date) => {
+  const handleSelectDate = useCallback((date) => {
     if (selecting === 'from') {
-      setTempFrom(date);
-      setTempTo('');
-      setSelecting('to');
+      setTempFrom(date); setTempTo(''); setSelecting('to');
     } else {
-      if (date < tempFrom) {
-        // Swap if user picks earlier date as "to"
-        setTempTo(tempFrom);
-        setTempFrom(date);
-      } else {
-        setTempTo(date);
-      }
+      if (date < tempFrom) { setTempTo(tempFrom); setTempFrom(date); }
+      else setTempTo(date);
       setSelecting('from');
     }
-  };
+  }, [selecting, tempFrom]);
 
-  const formatDisplay = (dateStr) => {
+  const formatDisplay = useCallback((dateStr) => {
     if (!dateStr) return '—';
-    const d = new Date(dateStr + 'T00:00:00');
-    return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
+    return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+  }, []);
 
   const canApply = tempFrom && tempTo && tempFrom <= tempTo;
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
       <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top']}>
-        {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: borderC }}>
           <TouchableOpacity onPress={onClose}>
             <Text style={{ fontSize: 15, fontWeight: '600', color: '#EF4444' }}>Cancel</Text>
           </TouchableOpacity>
           <Text style={{ fontSize: 16, fontWeight: '700', color: textPri }}>Custom Range</Text>
-          <TouchableOpacity
-            onPress={() => canApply && onApply(tempFrom, tempTo)}
-            disabled={!canApply}
-          >
+          <TouchableOpacity onPress={() => canApply && onApply(tempFrom, tempTo)} disabled={!canApply}>
             <Text style={{ fontSize: 15, fontWeight: '700', color: canApply ? '#F97316' : (isDark ? '#3F3F46' : '#D1D5DB') }}>Apply</Text>
           </TouchableOpacity>
         </View>
-
         <ScrollView contentContainerStyle={{ padding: 20 }}>
-          {/* From / To selector */}
           <View style={{ flexDirection: 'row', gap: 10, marginBottom: 24 }}>
             {[{ key: 'from', label: 'From', val: tempFrom }, { key: 'to', label: 'To', val: tempTo }].map((item) => (
               <TouchableOpacity
                 key={item.key}
                 onPress={() => setSelecting(item.key)}
-                style={{
-                  flex: 1, padding: 14, borderRadius: 14, borderWidth: 2,
-                  borderColor: selecting === item.key ? '#F97316' : isDark ? '#3F3F46' : '#E5E7EB',
-                  backgroundColor: selecting === item.key ? '#FFF7ED' : isDark ? '#27272A' : '#F9FAFB',
-                }}
+                style={{ flex: 1, padding: 14, borderRadius: 14, borderWidth: 2, borderColor: selecting === item.key ? '#F97316' : isDark ? '#3F3F46' : '#E5E7EB', backgroundColor: selecting === item.key ? '#FFF7ED' : isDark ? '#27272A' : '#F9FAFB' }}
               >
-                <Text style={{ fontSize: 11, fontWeight: '700', color: selecting === item.key ? '#F97316' : textMut, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>
-                  {item.label}
-                </Text>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: item.val ? textPri : textMut }}>
-                  {formatDisplay(item.val)}
-                </Text>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: selecting === item.key ? '#F97316' : textMut, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>{item.label}</Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: item.val ? textPri : textMut }}>{formatDisplay(item.val)}</Text>
               </TouchableOpacity>
             ))}
           </View>
-
-          {/* Instruction */}
           <Text style={{ fontSize: 12, color: textMut, textAlign: 'center', marginBottom: 20 }}>
             {selecting === 'from' ? 'Tap a date to set start' : 'Now tap a date to set end'}
           </Text>
-
-          {/* Calendar */}
-          <MiniCalendar
-            selectedFrom={tempFrom}
-            selectedTo={tempTo}
-            onSelectDate={handleSelectDate}
-            isDark={isDark}
-          />
-
-          {/* Quick presets inside modal */}
+          <MiniCalendar selectedFrom={tempFrom} selectedTo={tempTo} onSelectDate={handleSelectDate} isDark={isDark} />
           <View style={{ marginTop: 24, borderTopWidth: 1, borderTopColor: borderC, paddingTop: 20 }}>
             <Text style={{ fontSize: 12, fontWeight: '700', color: textMut, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 }}>Quick Select</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {[
-                { label: 'Last 7 days',  days: 7  },
-                { label: 'Last 14 days', days: 14 },
-                { label: 'Last 30 days', days: 30 },
-                { label: 'Last 90 days', days: 90 },
-              ].map((p) => {
-                const to   = new Date();
-                const from = new Date(); from.setDate(to.getDate() - (p.days - 1));
-                const fStr = fmt(from);
-                const tStr = fmt(to);
+              {[{ label: 'Last 7 days', days: 7 }, { label: 'Last 14 days', days: 14 }, { label: 'Last 30 days', days: 30 }, { label: 'Last 90 days', days: 90 }].map((p) => {
+                const to = new Date(); const from = new Date(); from.setDate(to.getDate() - (p.days - 1));
+                const fStr = fmt(from); const tStr = fmt(to);
                 const active = tempFrom === fStr && tempTo === tStr;
                 return (
-                  <TouchableOpacity
-                    key={p.label}
-                    onPress={() => { setTempFrom(fStr); setTempTo(tStr); setSelecting('from'); }}
-                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, minHeight: 34, justifyContent: 'center', borderColor: active ? '#F97316' : isDark ? '#3F3F46' : '#E5E7EB', backgroundColor: active ? '#F97316' : isDark ? '#27272A' : '#FFFFFF' }}
-                  >
+                  <TouchableOpacity key={p.label} onPress={() => { setTempFrom(fStr); setTempTo(tStr); setSelecting('from'); }}
+                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, minHeight: 34, justifyContent: 'center', borderColor: active ? '#F97316' : isDark ? '#3F3F46' : '#E5E7EB', backgroundColor: active ? '#F97316' : isDark ? '#27272A' : '#FFFFFF' }}>
                     <Text style={{ fontSize: 12, fontWeight: '600', color: active ? '#FFFFFF' : textMut, includeFontPadding: false, lineHeight: 16 }}>{p.label}</Text>
                   </TouchableOpacity>
                 );
@@ -301,46 +219,35 @@ const DateRangeModal = ({ visible, fromDate, toDate, onApply, onClose, isDark })
       </SafeAreaView>
     </Modal>
   );
-};
+});
 
-// ─── FILTER CHIP ─────────────────────────────────────────────────────────────
-const FilterChip = ({ label, active, onPress, isDark }) => (
-  <TouchableOpacity
-    onPress={onPress}
-    activeOpacity={0.7}
-    style={{
-      marginRight: 20,
-      paddingVertical: 10,
-      minHeight: 40,
-      justifyContent: 'center',
-      alignItems: 'center',
-      borderBottomWidth: 2.5,
-      borderBottomColor: active ? '#F97316' : 'transparent',
-    }}
+// ─── FILTER CHIP — memoized with stable onPress ───────────────────────────────
+const FilterChip = memo(({ label, active, onPress, isDark }) => (
+  <TouchableOpacity onPress={onPress} activeOpacity={0.7}
+    style={{ marginRight: 20, paddingVertical: 10, minHeight: 40, justifyContent: 'center', alignItems: 'center', borderBottomWidth: 2.5, borderBottomColor: active ? '#F97316' : 'transparent' }}
   >
-    <Text style={{
-      fontSize: 13,
-      fontWeight: active ? '700' : '500',
-      color: active ? '#F97316' : isDark ? '#71717A' : '#9CA3AF',
-      includeFontPadding: false,
-      lineHeight: 18,
-    }}>
+    <Text style={{ fontSize: 13, fontWeight: active ? '700' : '500', color: active ? '#F97316' : isDark ? '#71717A' : '#9CA3AF', includeFontPadding: false, lineHeight: 18 }}>
       {label}
     </Text>
   </TouchableOpacity>
-);
+));
 
-// ─── ORDER ROW ────────────────────────────────────────────────────────────────
-const OrderRow = ({ order, onPress, formatCurrency, isDark }) => {
+// ─── ORDER ROW — memoized with stable onPress ─────────────────────────────────
+const ORDER_ROW_HEIGHT = 74;
+
+const OrderRow = memo(({ order, onPress, formatCurrency, isDark }) => {
   const s = STATUS_STYLES[order.status] || STATUS_STYLES.pending;
-  // Parse timestamp — JS Date handles ISO strings in local timezone
   const raw = order.created_at;
-  const date = raw ? new Date(raw.includes('T') ? raw : raw.replace(' ', 'T') + '+08:00') : new Date();
+  const date = useMemo(() =>
+    raw ? new Date(raw.includes('T') ? raw : raw.replace(' ', 'T') + '+08:00') : new Date()
+  , [raw]);
+
+  // Stable handler — avoids new function on every render
+  const handlePress = useCallback(() => onPress(order), [order.id, onPress]);
+
   const borderC = isDark ? '#27272A' : '#F3F4F6';
   return (
-    <TouchableOpacity
-      onPress={() => onPress(order)}
-      activeOpacity={0.75}
+    <TouchableOpacity onPress={handlePress} activeOpacity={0.75}
       style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: borderC, backgroundColor: isDark ? '#18181B' : '#FFFFFF' }}
     >
       <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12, backgroundColor: isDark ? '#27272A' : '#F3F4F6' }}>
@@ -362,10 +269,10 @@ const OrderRow = ({ order, onPress, formatCurrency, isDark }) => {
       </View>
     </TouchableOpacity>
   );
-};
+});
 
 // ─── ORDER DETAIL MODAL ───────────────────────────────────────────────────────
-const OrderDetailModal = ({ order, onClose, onVoid, onReprint, formatCurrency, isDark, isPrinting }) => {
+const OrderDetailModal = memo(({ order, onClose, onVoid, onReprint, formatCurrency, isDark, isPrinting }) => {
   if (!order) return null;
   const s = STATUS_STYLES[order.status] || STATUS_STYLES.pending;
   const bg = isDark ? '#18181B' : '#FFFFFF';
@@ -373,10 +280,12 @@ const OrderDetailModal = ({ order, onClose, onVoid, onReprint, formatCurrency, i
   const textPri = isDark ? '#FFFFFF' : '#111827';
   const textMut = isDark ? '#71717A' : '#9CA3AF';
 
+  const handleVoid    = useCallback(() => onVoid(order.id),   [order.id, onVoid]);
+  const handleReprint = useCallback(() => onReprint(order),   [order, onReprint]);
+
   return (
     <Modal visible={!!order} animationType="slide" presentationStyle="pageSheet">
       <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top']}>
-        {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: borderC }}>
           <TouchableOpacity onPress={onClose} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: isDark ? '#27272A' : '#F3F4F6', alignItems: 'center', justifyContent: 'center' }}>
             <Ionicons name="close" size={20} color={isDark ? '#FFFFFF' : '#374151'} />
@@ -384,9 +293,7 @@ const OrderDetailModal = ({ order, onClose, onVoid, onReprint, formatCurrency, i
           <Text style={{ fontSize: 16, fontWeight: '700', color: textPri }}>Order Detail</Text>
           <View style={{ width: 36 }} />
         </View>
-
         <View style={{ flex: 1, padding: 16, gap: 12 }}>
-          {/* Info Card */}
           <Card>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <View>
@@ -401,8 +308,6 @@ const OrderDetailModal = ({ order, onClose, onVoid, onReprint, formatCurrency, i
               </View>
             </View>
           </Card>
-
-          {/* Items */}
           <Card>
             <Text style={{ fontSize: 13, fontWeight: '700', color: textPri, marginBottom: 10 }}>Items Ordered</Text>
             {order.items?.map((item, i) => (
@@ -418,8 +323,6 @@ const OrderDetailModal = ({ order, onClose, onVoid, onReprint, formatCurrency, i
               <Text style={{ fontSize: 15, fontWeight: '800', color: '#F97316' }}>{formatCurrency(order.total)}</Text>
             </View>
           </Card>
-
-          {/* Payment */}
           <Card>
             <Text style={{ fontSize: 13, fontWeight: '700', color: textPri, marginBottom: 10 }}>Payment</Text>
             {[
@@ -436,8 +339,6 @@ const OrderDetailModal = ({ order, onClose, onVoid, onReprint, formatCurrency, i
               </View>
             ))}
           </Card>
-
-          {/* Notes */}
           {order.notes ? (
             <Card>
               <Text style={{ fontSize: 13, fontWeight: '700', color: textPri, marginBottom: 8 }}>Order Notes</Text>
@@ -445,25 +346,15 @@ const OrderDetailModal = ({ order, onClose, onVoid, onReprint, formatCurrency, i
             </Card>
           ) : null}
         </View>
-
         <View style={{ paddingHorizontal: 16, paddingBottom: 24, paddingTop: 12, borderTopWidth: 1, borderTopColor: borderC, gap: 10 }}>
-          {/* Reprint always available */}
-          <TouchableOpacity
-            onPress={() => onReprint(order)}
-            disabled={isPrinting}
-            activeOpacity={0.8}
+          <TouchableOpacity onPress={handleReprint} disabled={isPrinting} activeOpacity={0.8}
             style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 13, borderRadius: 14, backgroundColor: isDark ? '#27272A' : '#F3F4F6', borderWidth: 1.5, borderColor: isDark ? '#3F3F46' : '#E5E7EB', opacity: isPrinting ? 0.6 : 1 }}
           >
             <Ionicons name="print-outline" size={18} color={isDark ? '#D4D4D8' : '#374151'} />
-            <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? '#D4D4D8' : '#374151' }}>
-              {isPrinting ? 'Printing…' : 'Reprint Receipt'}
-            </Text>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? '#D4D4D8' : '#374151' }}>{isPrinting ? 'Printing…' : 'Reprint Receipt'}</Text>
           </TouchableOpacity>
-          {/* Void only for completed orders */}
           {order.status === 'completed' && (
-            <TouchableOpacity
-              onPress={() => onVoid(order.id)}
-              activeOpacity={0.8}
+            <TouchableOpacity onPress={handleVoid} activeOpacity={0.8}
               style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 13, borderRadius: 14, backgroundColor: '#FEE2E2', borderWidth: 1.5, borderColor: '#FECACA' }}
             >
               <Ionicons name="trash-outline" size={18} color="#DC2626" />
@@ -474,12 +365,16 @@ const OrderDetailModal = ({ order, onClose, onVoid, onReprint, formatCurrency, i
       </SafeAreaView>
     </Modal>
   );
-};
+});
 
-// ─── SUMMARY BAR ─────────────────────────────────────────────────────────────
-const SummaryBar = ({ orders, formatCurrency, isDark }) => {
-  const completed = orders.filter(o => o.status === 'completed');
-  const total = completed.reduce((s, o) => s + (o.total || 0), 0);
+// ─── SUMMARY BAR — memoized, only recalculates when orders change ─────────────
+const SummaryBar = memo(({ orders, formatCurrency, isDark }) => {
+  const { count, total, avg } = useMemo(() => {
+    const completed = orders.filter(o => o.status === 'completed');
+    const total = completed.reduce((s, o) => s + (o.total || 0), 0);
+    return { count: completed.length, total, avg: completed.length > 0 ? total / completed.length : 0 };
+  }, [orders]);
+
   const bg = isDark ? '#27272A' : '#F9FAFB';
   const borderC = isDark ? '#3F3F46' : '#E5E7EB';
   const textPri = isDark ? '#FFFFFF' : '#111827';
@@ -489,7 +384,7 @@ const SummaryBar = ({ orders, formatCurrency, isDark }) => {
     <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: bg, borderBottomWidth: 1, borderBottomColor: borderC, gap: 16 }}>
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 11, color: textMut }}>Orders</Text>
-        <Text style={{ fontSize: 16, fontWeight: '800', color: textPri }}>{completed.length}</Text>
+        <Text style={{ fontSize: 16, fontWeight: '800', color: textPri }}>{count}</Text>
       </View>
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 11, color: textMut }}>Sales</Text>
@@ -497,35 +392,34 @@ const SummaryBar = ({ orders, formatCurrency, isDark }) => {
       </View>
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 11, color: textMut }}>Avg</Text>
-        <Text style={{ fontSize: 16, fontWeight: '800', color: textPri }}>
-          {formatCurrency(completed.length > 0 ? total / completed.length : 0)}
-        </Text>
+        <Text style={{ fontSize: 16, fontWeight: '800', color: textPri }}>{formatCurrency(avg)}</Text>
       </View>
     </View>
   );
-};
+});
 
 // ─── MAIN SCREEN ──────────────────────────────────────────────────────────────
 export default function OrdersScreen() {
-  const [orders, setOrders] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [search, setSearch] = useState('');
-  const [dateFilter, setDateFilter] = useState('today');
-  const [payFilter, setPayFilter] = useState(null);
+  const [orders, setOrders]           = useState([]);
+  const [selected, setSelected]       = useState(null);
+  const [refreshing, setRefreshing]   = useState(false);
+  const [search, setSearch]           = useState('');
+  const [dateFilter, setDateFilter]   = useState('today');
+  const [payFilter, setPayFilter]     = useState(null);
   const [statusFilter, setStatusFilter] = useState(null);
-  const [customFrom, setCustomFrom] = useState('');
-  const [customTo, setCustomTo] = useState('');
+  const [customFrom, setCustomFrom]   = useState('');
+  const [customTo, setCustomTo]       = useState('');
   const [showCalendar, setShowCalendar] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
   const [pendingVoidId, setPendingVoidId] = useState(null);
-  const [pinError, setPinError] = useState('');
-  const [isPrinting, setIsPrinting] = useState(false);
+  const [pinError, setPinError]       = useState('');
+  const [isPrinting, setIsPrinting]   = useState(false);
+
   const { formatCurrency, isDark, settings } = useApp();
   const { currentStaff } = useStaff();
 
-  const bg = isDark ? '#000000' : '#F2F2F7';
-  const surfBg = isDark ? '#18181B' : '#FFFFFF';
+  const bg      = isDark ? '#000000' : '#F2F2F7';
+  const surfBg  = isDark ? '#18181B' : '#FFFFFF';
   const borderC = isDark ? '#27272A' : '#F3F4F6';
   const textPri = isDark ? '#FFFFFF' : '#111827';
   const textMut = isDark ? '#71717A' : '#9CA3AF';
@@ -542,76 +436,50 @@ export default function OrdersScreen() {
       } else {
         ({ from, to } = getDateRange(dateFilter));
       }
-      const results = getOrdersFiltered({
-        search,
-        dateFrom: from,
-        dateTo: to,
-        paymentMethod: payFilter,
-        status: statusFilter,
-      });
-      setOrders(results);
+      setOrders(getOrdersFiltered({ search, dateFrom: from, dateTo: to, paymentMethod: payFilter, status: statusFilter }));
     } catch (e) { console.warn(e); }
     finally { setRefreshing(false); }
   }, [search, dateFilter, payFilter, statusFilter, customFrom, customTo]);
 
-  const handlePress = (order) => {
+  // Stable handlers
+  const handlePress = useCallback((order) => {
     try { setSelected(getOrderById(order.id)); } catch (e) { console.warn(e); }
-  };
+  }, []);
 
-  const handleVoid = (id) => {
-    // Admin requires PIN, cashier cannot void
+  const handleVoid = useCallback((id) => {
     if (!currentStaff) return;
     setPendingVoidId(id);
     setPinError('');
     setShowPinModal(true);
-  };
+  }, [currentStaff]);
 
-  const handlePinComplete = (pin) => {
+  const handlePinComplete = useCallback((pin) => {
     const verified = verifyPin(currentStaff.id, pin);
     if (verified) {
-      setPinError('');
-      setShowPinModal(false);
+      setPinError(''); setShowPinModal(false);
       voidOrder(pendingVoidId);
-      setSelected(null);
-      setPendingVoidId(null);
+      setSelected(null); setPendingVoidId(null);
       loadOrders();
     } else {
       setPinError('Incorrect PIN. Try again.');
     }
-  };
+  }, [currentStaff, pendingVoidId, loadOrders]);
 
-  const handleReprint = async (order) => {
+  const handleReprint = useCallback(async (order) => {
     if (!order) return;
     setIsPrinting(true);
     try {
       const { BLEPrinter } = require('react-native-thermal-receipt-printer-image-qr');
-      const { getSetting } = require('../../database');
+      const { getSetting }  = require('../../database');
       const address = getSetting('printer_address');
       if (!address) {
         Alert.alert('No Printer', 'Go to Settings → Bluetooth Printer → Connect first.');
-        setIsPrinting(false);
-        return;
+        setIsPrinting(false); return;
       }
-      // Build receipt from order data
-      const cartItems = order.items?.map(i => ({
-        name: i.name,
-        price: i.subtotal / i.quantity,
-        quantity: i.quantity,
-      })) || [];
+      const cartItems = order.items?.map(i => ({ name: i.name, price: i.subtotal / i.quantity, quantity: i.quantity })) || [];
       const text = buildReceiptText({
-        order: {
-          orderNumber: order.order_number,
-          subtotal: order.subtotal,
-          discountAmount: order.discount || 0,
-          taxAmount: order.tax || 0,
-          total: order.total,
-          paymentMethod: order.payment_method,
-          amountTendered: order.amount_tendered,
-          changeAmount: order.change_amount || 0,
-        },
-        cartItems,
-        settings,
-        formatCurrency,
+        order: { orderNumber: order.order_number, subtotal: order.subtotal, discountAmount: order.discount || 0, taxAmount: order.tax || 0, total: order.total, paymentMethod: order.payment_method, amountTendered: order.amount_tendered, changeAmount: order.change_amount || 0 },
+        cartItems, settings, formatCurrency,
       });
       await BLEPrinter.init();
       await BLEPrinter.connectPrinter(address);
@@ -619,25 +487,10 @@ export default function OrdersScreen() {
     } catch (e) {
       try {
         const { BLEPrinter } = require('react-native-thermal-receipt-printer-image-qr');
-        const cartItems = order.items?.map(i => ({
-          name: i.name,
-          price: i.subtotal / i.quantity,
-          quantity: i.quantity,
-        })) || [];
+        const cartItems = order.items?.map(i => ({ name: i.name, price: i.subtotal / i.quantity, quantity: i.quantity })) || [];
         const text = buildReceiptText({
-          order: {
-            orderNumber: order.order_number,
-            subtotal: order.subtotal,
-            discountAmount: order.discount || 0,
-            taxAmount: order.tax || 0,
-            total: order.total,
-            paymentMethod: order.payment_method,
-            amountTendered: order.amount_tendered,
-            changeAmount: order.change_amount || 0,
-          },
-          cartItems,
-          settings,
-          formatCurrency,
+          order: { orderNumber: order.order_number, subtotal: order.subtotal, discountAmount: order.discount || 0, taxAmount: order.tax || 0, total: order.total, paymentMethod: order.payment_method, amountTendered: order.amount_tendered, changeAmount: order.change_amount || 0 },
+          cartItems, settings, formatCurrency,
         });
         BLEPrinter.printBill(text, {});
       } catch (e2) {
@@ -645,24 +498,52 @@ export default function OrdersScreen() {
       }
     }
     setTimeout(() => setIsPrinting(false), 2000);
-  };
+  }, [settings, formatCurrency]);
+
+  const handleClearFilters = useCallback(() => {
+    setDateFilter('today'); setPayFilter(null); setStatusFilter(null);
+    setSearch(''); setCustomFrom(''); setCustomTo('');
+  }, []);
+
+  // Stable FlatList helpers
+  const keyExtractor  = useCallback((i) => String(i.id), []);
+  const getItemLayout = useCallback((_, index) => ({ length: ORDER_ROW_HEIGHT, offset: ORDER_ROW_HEIGHT * index, index }), []);
+  const renderItem    = useCallback(({ item }) => (
+    <OrderRow order={item} onPress={handlePress} formatCurrency={formatCurrency} isDark={isDark} />
+  ), [handlePress, formatCurrency, isDark]);
+
+  // Stable filter chip handlers — one per filter type
+  const dateChipHandlers = useMemo(() =>
+    DATE_FILTERS.reduce((acc, f) => {
+      acc[f.id] = () => {
+        if (f.id === 'custom') { setDateFilter('custom'); setShowCalendar(true); }
+        else setDateFilter(f.id);
+      };
+      return acc;
+    }, {}), []);
+
+  const payChipHandlers = useMemo(() =>
+    PAY_FILTERS.reduce((acc, f) => {
+      acc[String(f.id)] = () => setPayFilter(f.id);
+      return acc;
+    }, {}), []);
+
+  const statusChipHandlers = useMemo(() =>
+    STATUS_FILTERS.reduce((acc, f) => {
+      acc[String(f.id)] = () => setStatusFilter(f.id);
+      return acc;
+    }, {}), []);
+
+  const hasActiveFilters = dateFilter !== 'today' || payFilter !== null || statusFilter !== null || search.length > 0;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top']}>
       {/* Header */}
       <View style={{ paddingHorizontal: 16, paddingVertical: 14, backgroundColor: surfBg, borderBottomWidth: 1, borderBottomColor: borderC }}>
         <Text style={{ fontSize: 22, fontWeight: '800', color: textPri }}>Orders</Text>
-
-        {/* Search */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: isDark ? '#27272A' : '#F3F4F6', borderRadius: 12, borderWidth: 1, borderColor: borderC }}>
           <Ionicons name="search-outline" size={15} color={textMut} />
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search order number..."
-            placeholderTextColor={textMut}
-            style={{ flex: 1, fontSize: 13, color: textPri, padding: 0 }}
-          />
+          <TextInput value={search} onChangeText={setSearch} placeholder="Search order number..." placeholderTextColor={textMut} style={{ flex: 1, fontSize: 13, color: textPri, padding: 0 }} />
           {search.length > 0 && (
             <TouchableOpacity onPress={() => setSearch('')}>
               <Ionicons name="close-circle" size={15} color={textMut} />
@@ -671,128 +552,114 @@ export default function OrdersScreen() {
         </View>
       </View>
 
-      {/* ── FILTER PANEL ── */}
+      {/* Filter Panel */}
       <View style={{ backgroundColor: isDark ? '#111111' : '#F8F8F8', borderBottomWidth: 1, borderBottomColor: borderC }}>
-
-        {/* Date row */}
         <View style={{ flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: borderC }}>
           <Text numberOfLines={1} style={{ fontSize: 10, fontWeight: '700', color: isDark ? '#52525B' : '#C4C4C4', textTransform: 'uppercase', letterSpacing: 1, width: 70, paddingLeft: 16 }}>Date</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 16 }}>
             {DATE_FILTERS.map((f) => (
               <FilterChip
                 key={f.id}
-                label={f.id === 'custom' && customFrom && customTo
-                  ? `${customFrom.slice(5)} → ${customTo.slice(5)}`
-                  : f.label}
+                label={f.id === 'custom' && customFrom && customTo ? `${customFrom.slice(5)} → ${customTo.slice(5)}` : f.label}
                 active={dateFilter === f.id}
-                onPress={() => {
-                  if (f.id === 'custom') { setDateFilter('custom'); setShowCalendar(true); }
-                  else setDateFilter(f.id);
-                }}
+                onPress={dateChipHandlers[f.id]}
                 isDark={isDark}
               />
             ))}
           </ScrollView>
         </View>
-
-        {/* Payment row */}
         <View style={{ flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: borderC }}>
           <Text numberOfLines={1} style={{ fontSize: 10, fontWeight: '700', color: isDark ? '#52525B' : '#C4C4C4', textTransform: 'uppercase', letterSpacing: 1, width: 70, paddingLeft: 16 }}>Pay</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 16 }}>
             {PAY_FILTERS.map((f) => (
-              <FilterChip key={String(f.id)} label={f.label} active={payFilter === f.id} onPress={() => setPayFilter(f.id)} isDark={isDark} />
+              <FilterChip key={String(f.id)} label={f.label} active={payFilter === f.id} onPress={payChipHandlers[String(f.id)]} isDark={isDark} />
             ))}
           </ScrollView>
         </View>
-
-        {/* Status row */}
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Text numberOfLines={1} style={{ fontSize: 10, fontWeight: '700', color: isDark ? '#52525B' : '#C4C4C4', textTransform: 'uppercase', letterSpacing: 1, width: 70, paddingLeft: 16 }}>Status</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 16 }}>
             {STATUS_FILTERS.map((f) => (
-              <FilterChip key={String(f.id)} label={f.label} active={statusFilter === f.id} onPress={() => setStatusFilter(f.id)} isDark={isDark} />
+              <FilterChip key={String(f.id)} label={f.label} active={statusFilter === f.id} onPress={statusChipHandlers[String(f.id)]} isDark={isDark} />
             ))}
           </ScrollView>
         </View>
       </View>
 
       {/* Clear filters */}
-      {(dateFilter !== 'today' || payFilter !== null || statusFilter !== null || search.length > 0) && (
+      {hasActiveFilters && (
         <View style={{ backgroundColor: isDark ? '#111111' : '#F8F8F8', flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 16, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: borderC }}>
-          <TouchableOpacity
-            onPress={() => { setDateFilter('today'); setPayFilter(null); setStatusFilter(null); setSearch(''); setCustomFrom(''); setCustomTo(''); }}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
-          >
+          <TouchableOpacity onPress={handleClearFilters} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Ionicons name="close-circle-outline" size={13} color="#F97316" />
             <Text style={{ fontSize: 11, fontWeight: '600', color: '#F97316' }}>Clear all filters</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Summary Bar */}
       <SummaryBar orders={orders} formatCurrency={formatCurrency} isDark={isDark} />
 
-      {/* List */}
       {orders.length === 0 ? (
         <EmptyState iconName="receipt-outline" title="No orders found" subtitle="Try adjusting your filters" />
       ) : (
         <FlatList
           data={orders}
-          keyExtractor={(i) => String(i.id)}
-          renderItem={({ item }) => (
-            <OrderRow order={item} onPress={handlePress} formatCurrency={formatCurrency} isDark={isDark} />
-          )}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          getItemLayout={getItemLayout}
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={10}
+          initialNumToRender={15}
+          windowSize={10}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadOrders} tintColor="#F97316" />}
           showsVerticalScrollIndicator={false}
         />
       )}
 
-      <OrderDetailModal
-        order={selected}
-        onClose={() => setSelected(null)}
-        onVoid={handleVoid}
-        onReprint={handleReprint}
-        isPrinting={isPrinting}
-        formatCurrency={formatCurrency}
-        isDark={isDark}
-      />
+      {/* Conditionally mount modals — frees memory when closed */}
+      {selected && (
+        <OrderDetailModal
+          order={selected}
+          onClose={() => setSelected(null)}
+          onVoid={handleVoid}
+          onReprint={handleReprint}
+          isPrinting={isPrinting}
+          formatCurrency={formatCurrency}
+          isDark={isDark}
+        />
+      )}
 
-      {/* PIN Modal for Void */}
-      <Modal visible={showPinModal} animationType="slide" presentationStyle="pageSheet" transparent={false}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#18181B' : '#FFFFFF' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: isDark ? '#27272A' : '#F3F4F6' }}>
-            <TouchableOpacity onPress={() => { setShowPinModal(false); setPendingVoidId(null); setPinError(''); }}>
-              <Text style={{ fontSize: 15, fontWeight: '600', color: '#EF4444' }}>Cancel</Text>
-            </TouchableOpacity>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: isDark ? '#FFFFFF' : '#111827' }}>Confirm Void</Text>
-            <View style={{ width: 60 }} />
-          </View>
-          <View style={{ flex: 1, alignItems: 'center', paddingHorizontal: 32, paddingTop: 32 }}>
-            <View style={{ width: 56, height: 56, borderRadius: 20, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
-              <Ionicons name="trash-outline" size={28} color="#DC2626" />
+      {showPinModal && (
+        <Modal visible={showPinModal} animationType="slide" presentationStyle="pageSheet">
+          <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#18181B' : '#FFFFFF' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: isDark ? '#27272A' : '#F3F4F6' }}>
+              <TouchableOpacity onPress={() => { setShowPinModal(false); setPendingVoidId(null); setPinError(''); }}>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: '#EF4444' }}>Cancel</Text>
+              </TouchableOpacity>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: isDark ? '#FFFFFF' : '#111827' }}>Confirm Void</Text>
+              <View style={{ width: 60 }} />
             </View>
-            <Text style={{ fontSize: 20, fontWeight: '800', color: isDark ? '#FFFFFF' : '#111827', marginBottom: 6 }}>Enter Your PIN</Text>
-            <Text style={{ fontSize: 14, color: isDark ? '#71717A' : '#9CA3AF', textAlign: 'center', marginBottom: 32 }}>
-              Confirm your identity to void this order
-            </Text>
-            <PinPad
-              onComplete={handlePinComplete}
-              onCancel={() => { setShowPinModal(false); setPendingVoidId(null); setPinError(''); }}
-              isDark={isDark}
-              error={pinError}
-            />
-          </View>
-        </SafeAreaView>
-      </Modal>
+            <View style={{ flex: 1, alignItems: 'center', paddingHorizontal: 32, paddingTop: 32 }}>
+              <View style={{ width: 56, height: 56, borderRadius: 20, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+                <Ionicons name="trash-outline" size={28} color="#DC2626" />
+              </View>
+              <Text style={{ fontSize: 20, fontWeight: '800', color: isDark ? '#FFFFFF' : '#111827', marginBottom: 6 }}>Enter Your PIN</Text>
+              <Text style={{ fontSize: 14, color: isDark ? '#71717A' : '#9CA3AF', textAlign: 'center', marginBottom: 32 }}>Confirm your identity to void this order</Text>
+              <PinPad onComplete={handlePinComplete} onCancel={() => { setShowPinModal(false); setPendingVoidId(null); setPinError(''); }} isDark={isDark} error={pinError} />
+            </View>
+          </SafeAreaView>
+        </Modal>
+      )}
 
-      <DateRangeModal
-        visible={showCalendar}
-        fromDate={customFrom}
-        toDate={customTo}
-        onApply={(from, to) => { setCustomFrom(from); setCustomTo(to); setShowCalendar(false); }}
-        onClose={() => { setShowCalendar(false); if (!customFrom || !customTo) setDateFilter('today'); }}
-        isDark={isDark}
-      />
+      {showCalendar && (
+        <DateRangeModal
+          visible={showCalendar}
+          fromDate={customFrom}
+          toDate={customTo}
+          onApply={(from, to) => { setCustomFrom(from); setCustomTo(to); setShowCalendar(false); }}
+          onClose={() => { setShowCalendar(false); if (!customFrom || !customTo) setDateFilter('today'); }}
+          isDark={isDark}
+        />
+      )}
     </SafeAreaView>
   );
 }
